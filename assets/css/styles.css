@@ -517,24 +517,32 @@ img {
   border-radius: 2px;
 }
 
+/* Entropy-based strength levels */
+.password-strength-fill.very-weak {
+  background-color: #dc2626; /* Red 600 */
+}
+
 .password-strength-fill.weak {
-  width: 33%;
-  background-color: var(--danger-color);
+  background-color: #f59e0b; /* Amber 500 */
 }
 
 .password-strength-fill.medium {
-  width: 66%;
-  background-color: var(--warning-color);
+  background-color: #eab308; /* Yellow 500 */
 }
 
 .password-strength-fill.strong {
-  width: 100%;
-  background-color: var(--success-color);
+  background-color: #22c55e; /* Green 500 */
+}
+
+.password-strength-fill.very-strong {
+  background-color: #16a34a; /* Green 600 */
 }
 
 .password-strength-text {
   font-size: 0.75rem;
   color: var(--text-muted);
+  margin-top: 0.25rem;
+  line-height: 1.4;
 }
 
 .form-row {

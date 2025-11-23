@@ -67,9 +67,9 @@
                 id="password"
                 name="password"
                 required
-                placeholder="Create a strong password"
+                placeholder="Create a strong password (12+ characters)"
                 autocomplete="new-password"
-                minlength="8"
+                minlength="12"
                 maxlength="128"
               />
               <button
@@ -106,7 +106,7 @@
                 required
                 placeholder="Confirm your password"
                 autocomplete="new-password"
-                minlength="8"
+                minlength="12"
                 maxlength="128"
               />
               <button
@@ -173,10 +173,10 @@
 
       validator.addLiveValidation(passwordField, [
         { type: 'required' },
-        { type: 'password', minLength: 8, maxLength: 128 },
+        { type: 'password', minLength: 12, maxLength: 128 },  // Updated to 12
       ]);
 
-      // Password strength indicator
+      // Password strength indicator with Entropy
       passwordField.addEventListener('input', () => {
         const password = passwordField.value;
         if (!password) {
@@ -189,27 +189,25 @@
 
         const strength = validator.calculatePasswordStrength(password);
         const fillElement = document.getElementById('passwordStrengthFill');
+        
+        // Use new entropy-based levels: very-weak, weak, medium, strong, very-strong
         fillElement.className = `password-strength-fill ${strength.level}`;
+        fillElement.style.width = `${strength.percentage}%`;
 
-        let strengthText = 'Password strength: ';
-        if (strength.level === 'weak') strengthText += 'Weak';
-        else if (strength.level === 'medium') strengthText += 'Medium';
-        else strengthText += 'Strong';
+        // Display entropy and strength label
+        let strengthText = `${strength.label} (${strength.entropy} bits)`;
+        
+        // Add crack time estimate
+        if (strength.estimatedCrackTime) {
+          strengthText += ` - Crack time: ${strength.estimatedCrackTime}`;
+        }
 
-        document.getElementById('passwordStrengthText').textContent =
-          strengthText;
+        document.getElementById('passwordStrengthText').textContent = strengthText;
 
-        // Add suggestions
-        const suggestions = [];
-        if (!strength.checks.uppercase)
-          suggestions.push('Add uppercase letters');
-        if (!strength.checks.number) suggestions.push('Add numbers');
-        if (!strength.checks.special) suggestions.push('Add special characters');
-        if (password.length < 12) suggestions.push('Make it longer (12+ chars)');
-
-        if (suggestions.length > 0) {
-          document.getElementById('passwordStrengthText').textContent +=
-            ' - Tip: ' + suggestions[0];
+        // Show recommendations from entropy calculation
+        if (strength.recommendations && strength.recommendations.length > 0) {
+          const tip = document.getElementById('passwordStrengthText');
+          tip.textContent += ' | Tip: ' + strength.recommendations[0];
         }
       });
 
@@ -260,20 +258,28 @@
             return;
           }
 
-          // Validate password
+          // Validate password with entropy-based strength
           const passwordValidation = validator.validatePassword(password, {
-            minLength: 8,
+            minLength: 12,  // Updated to 12 characters
           });
           if (!passwordValidation.valid) {
             showError(passwordValidation.message);
             return;
           }
 
-          // Check common passwords
-          if (SecurityUtils.checkCommonPasswords(password)) {
+          // Check password strength using entropy
+          const strength = validator.calculatePasswordStrength(password);
+          if (strength.entropy < 40) {
             showError(
-              'This password is too common. Please choose a stronger password.'
+              `Password is too weak (${strength.entropy} bits). Use at least 12 characters for better security.`
             );
+            return;
+          }
+
+          // Check common/leaked passwords
+          const commonCheck = SecurityUtils.checkCommonPasswords(password);
+          if (commonCheck.isCommon) {
+            showError(commonCheck.message);
             return;
           }
 
