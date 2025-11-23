@@ -75,7 +75,337 @@ Module Activity Log đã được triển khai hoàn chỉnh để theo dõi và
 
 ### 2.7. Hệ thống Bảo mật và Xác thực
 
-Bảo mật là một trong những ưu tiên hàng đầu của dự án, được triển khai qua nhiều lớp bảo vệ. Hệ thống sử dụng xác thực JWT (JSON Web Token) cho việc xác thực dựa trên token. CSRF Protection được tích hợp với token CSRF cho mọi request nhằm ngăn chặn các cuộc tấn công giả mạo yêu cầu. XSS Prevention được thực hiện thông qua việc sanitization (làm sạch) đầu vào từ người dùng. Rate Limiting giúp giới hạn số lượng request trong một khoảng thời gian để chống lại các cuộc tấn công DDoS. Content Security Policy (CSP) headers được áp dụng trên mọi trang để ngăn chặn các cuộc tấn công injection. Hệ thống tích hợp **Entropy-based Password Strength Meter** đánh giá độ mạnh mật khẩu theo công thức khoa học (L × log₂(N)) thay vì phương pháp đơn giản, **ưu tiên độ dài hơn độ phức tạp**. Password Validation hỗ trợ passphrase dài, kiểm tra mật khẩu phổ biến/rò rỉ, và phát hiện pattern đơn giản (sequential, repeated characters). Input Validation real-time đảm bảo tính toàn vẹn của dữ liệu đầu vào với debounced validation để tối ưu hiệu năng.
+Bảo mật là một trong những ưu tiên hàng đầu của dự án, được triển khai qua nhiều lớp bảo vệ toàn diện với 8 cơ chế bảo mật chính:
+
+**1. JWT Authentication** - Xác thực dựa trên JSON Web Token với Bearer token được gửi trong Authorization header cho mọi request cần xác thực.
+
+**2. CSRF Protection** - Token CSRF 256-bit được tạo bằng `crypto.getRandomValues()`, lưu trong sessionStorage và tự động đính kèm X-CSRF-Token header cho mọi request nhằm ngăn chặn Cross-Site Request Forgery.
+
+**3. XSS Prevention** - Input sanitization nghiêm ngặt với HTML escaping tự động, phát hiện các pattern nguy hiểm (script tags, event handlers, javascript: protocol).
+
+**4. Rate Limiting** - Giới hạn số lượng request trong time window để chống brute force và DDoS attacks (mặc định: 5 attempts/60 seconds).
+
+**5. CSP Headers & Injection Detection** - Content Security Policy headers và pattern matching để phát hiện suspicious input (XSS, SQL injection, script injection).
+
+**6. Entropy-based Password Strength** - Đánh giá độ mạnh mật khẩu theo công thức khoa học L × log₂(N), **ưu tiên độ dài hơn độ phức tạp** (12 ký tự đơn giản > 8 ký tự phức tạp).
+
+**7. Common Password Detection** - Kiểm tra 30+ mật khẩu phổ biến/rò rỉ, phát hiện pattern đơn giản (sequential: 123/abc, repeated: aaa/111).
+
+**8. Real-time Validation** - Input validation real-time với debounced validation (500ms delay) để tối ưu hiệu năng và UX.
+
+**Code minh họa - CSRF Protection (`assets/js/validation.js` & `assets/js/api.js`):**
+
+```javascript
+// SecurityUtils - CSRF Token Management (validation.js)
+const SecurityUtils = {
+  // Generate CSRF token using crypto.getRandomValues
+  generateCSRFToken() {
+    const array = new Uint8Array(32);  // 256-bit token
+    crypto.getRandomValues(array);
+    return Array.from(array, (byte) => 
+      byte.toString(16).padStart(2, '0')
+    ).join('');
+  },
+
+  // Store CSRF token in sessionStorage
+  storeCSRFToken() {
+    const token = this.generateCSRFToken();
+    sessionStorage.setItem('csrf_token', token);
+    return token;
+  },
+
+  // Get CSRF token (create if not exists)
+  getCSRFToken() {
+    let token = sessionStorage.getItem('csrf_token');
+    if (!token) {
+      token = this.storeCSRFToken();
+    }
+    return token;
+  }
+};
+
+// APIService - Auto-attach CSRF token to requests (api.js)
+class APIService {
+  getHeaders(includeAuth = false) {
+    const headers = {
+      'Content-Type': 'application/json',
+      'X-Requested-With': 'XMLHttpRequest', // CSRF protection marker
+    };
+
+    if (includeAuth) {
+      const token = localStorage.getItem(STORAGE_KEYS.TOKEN);
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+    }
+
+    // Auto-attach CSRF token to all requests
+    if (typeof SecurityUtils !== 'undefined') {
+      const csrfToken = SecurityUtils.getCSRFToken();
+      if (csrfToken) {
+        headers['X-CSRF-Token'] = csrfToken;  // CSRF token header
+      }
+    }
+
+    return headers;
+  }
+}
+
+// Usage: CSRF token is automatically initialized and sent
+// In signup.html, login.html, etc:
+SecurityUtils.storeCSRFToken();  // Initialize on page load
+// Then all API calls automatically include X-CSRF-Token header
+```
+
+**Cơ chế hoạt động:**
+1. **Token Generation**: Tạo 256-bit random token bằng `crypto.getRandomValues()` (cryptographically secure)
+2. **Storage**: Lưu trong `sessionStorage` (tự động xóa khi đóng tab/browser)
+3. **Auto-attach**: Mọi request tự động thêm `X-CSRF-Token` header
+4. **Validation**: Backend verify token để đảm bảo request hợp lệ
+5. **Protection**: Ngăn chặn attacker gửi request giả mạo từ site khác
+
+---
+
+#### 2.7.1. XSS Prevention - Input Sanitization
+
+**Code minh họa (`assets/js/validation.js`):**
+
+```javascript
+class FormValidator {
+  // Sanitize input để ngăn chặn XSS attacks
+  sanitizeInput(input) {
+    if (typeof input !== 'string') return input;
+
+    // Sử dụng browser's built-in HTML escaping
+    const div = document.createElement('div');
+    div.textContent = input;  // Tự động escape HTML entities
+    return div.innerHTML;     // Trả về chuỗi đã escaped
+  },
+
+  // Sanitize HTML với whitelist tags được phép
+  sanitizeHTML(html, allowedTags = []) {
+    const div = document.createElement('div');
+    div.innerHTML = html;
+
+    if (allowedTags.length === 0) {
+      return div.textContent || div.innerText || '';  // Strip toàn bộ HTML
+    }
+
+    // Xóa các tag không được phép
+    const allElements = div.querySelectorAll('*');
+    allElements.forEach((el) => {
+      if (!allowedTags.includes(el.tagName.toLowerCase())) {
+        el.replaceWith(el.textContent);  // Thay thế bằng text only
+      }
+    });
+
+    return div.innerHTML;
+  }
+}
+```
+
+**Usage:**
+```javascript
+const userInput = '<script>alert("XSS")</script>Hello';
+const safe = validator.sanitizeInput(userInput);  
+// Result: "&lt;script&gt;alert(\"XSS\")&lt;/script&gt;Hello"
+```
+
+---
+
+#### 2.7.2. Rate Limiting - Anti Brute Force & DDoS
+
+**Code minh họa (`assets/js/validation.js`):**
+
+```javascript
+const SecurityUtils = {
+  rateLimiter: new Map(),
+
+  // Kiểm tra xem action có vượt quá rate limit không
+  isRateLimited(action, maxAttempts = 5, timeWindow = 60000) {
+    const now = Date.now();
+    const key = action;
+
+    if (!this.rateLimiter.has(key)) {
+      this.rateLimiter.set(key, []);
+    }
+
+    const attempts = this.rateLimiter.get(key);
+    
+    // Xóa các attempts cũ ngoài time window
+    const validAttempts = attempts.filter(
+      (timestamp) => now - timestamp < timeWindow
+    );
+
+    if (validAttempts.length >= maxAttempts) {
+      return {
+        limited: true,
+        message: `Too many attempts. Please try again later.`,
+      };
+    }
+
+    validAttempts.push(now);
+    this.rateLimiter.set(key, validAttempts);
+
+    return { limited: false };
+  }
+};
+```
+
+**Usage trong API calls:**
+```javascript
+// Giới hạn 5 lần đăng nhập trong 60 giây
+const rateLimitCheck = SecurityUtils.isRateLimited('login', 5, 60000);
+if (rateLimitCheck.limited) {
+  throw new Error(rateLimitCheck.message);
+}
+```
+
+---
+
+#### 2.7.3. Suspicious Input Detection - Anti Injection
+
+**Code minh họa (`assets/js/validation.js`):**
+
+```javascript
+const SecurityUtils = {
+  // Phát hiện các pattern nguy hiểm (XSS, injection)
+  detectSuspiciousInput(input) {
+    const suspiciousPatterns = [
+      /<script[^>]*>[\s\S]*?<\/script>/gi,  // Script tags
+      /javascript:/gi,                      // JavaScript protocol
+      /on\w+\s*=/gi,                        // Event handlers (onclick, onerror...)
+      /<iframe/gi,                          // Iframe tags
+      /data:text\/html/gi,                  // Data URLs
+      /vbscript:/gi,                        // VBScript protocol
+    ];
+
+    for (const pattern of suspiciousPatterns) {
+      if (pattern.test(input)) {
+        return {
+          suspicious: true,
+          message: 'Input contains potentially malicious content',
+        };
+      }
+    }
+
+    return { suspicious: false };
+  }
+};
+```
+
+**Usage:**
+```javascript
+const check = SecurityUtils.detectSuspiciousInput(userInput);
+if (check.suspicious) {
+  alert(check.message);
+  return false;
+}
+```
+
+---
+
+#### 2.7.4. Common/Leaked Password Detection
+
+**Code minh họa (`assets/js/validation.js`):**
+
+```javascript
+const SecurityUtils = {
+  checkCommonPasswords(password) {
+    const commonPasswords = [
+      'password', '123456', '12345678', 'qwerty', 'abc123',
+      'Password1', 'P@ssw0rd', 'Password123', 'admin', 'welcome',
+      '1q2w3e4r', 'letmein', 'monkey', 'dragon', 'iloveyou',
+      // ... 30+ common passwords
+    ];
+
+    const lowerPassword = password.toLowerCase();
+    
+    // Kiểm tra trùng khớp trực tiếp
+    if (commonPasswords.some(common => lowerPassword === common.toLowerCase())) {
+      return {
+        isCommon: true,
+        message: 'This password is too common and easily guessed'
+      };
+    }
+
+    // Kiểm tra repeated characters: aaaa, 1111
+    if (/^(.)\1+$/.test(password)) {
+      return {
+        isCommon: true,
+        message: 'Password cannot be all the same character'
+      };
+    }
+
+    // Kiểm tra sequential patterns: 123, abc, 456
+    if (/^(012|123|234|345|456|567|678|789|abc|bcd|cde)+$/i.test(password)) {
+      return {
+        isCommon: true,
+        message: 'Password contains sequential patterns'
+      };
+    }
+
+    return { isCommon: false };
+  }
+};
+```
+
+**Usage:**
+```javascript
+const check = SecurityUtils.checkCommonPasswords('Password123');
+if (check.isCommon) {
+  alert(check.message);  // "This password is too common and easily guessed"
+}
+```
+
+---
+
+#### 2.7.5. Real-time Validation với Debouncing
+
+**Code minh họa (`assets/js/validation.js`):**
+
+```javascript
+class FormValidator {
+  addLiveValidation(fieldElement, validationRules) {
+    let feedbackElement = fieldElement.parentElement.querySelector('.form-feedback');
+    if (!feedbackElement) {
+      feedbackElement = this.createFeedbackElement();
+      fieldElement.parentElement.appendChild(feedbackElement);
+    }
+
+    const validateField = () => {
+      // Thực hiện validation logic...
+      this.updateFieldValidation(fieldElement, feedbackElement, isValid, message);
+    };
+
+    // Validate ngay khi blur (immediate feedback)
+    fieldElement.addEventListener('blur', validateField);
+    
+    // Validate khi typing với debounce 500ms (tối ưu performance)
+    fieldElement.addEventListener('input', debounce(validateField, 500));
+  }
+}
+
+// Debounce utility - Ngăn validate quá nhiều lần
+function debounce(func, wait) {
+  let timeout;
+  return function executedFunction(...args) {
+    const later = () => {
+      clearTimeout(timeout);
+      func(...args);
+    };
+    clearTimeout(timeout);
+    timeout = setTimeout(later, wait);  // Chờ 500ms sau lần gõ phím cuối
+  };
+}
+```
+
+**Benefits:**
+- **Performance**: Giảm số lần validate từ hàng trăm xuống còn vài lần khi user typing
+- **UX**: Không hiện error liên tục trong khi đang gõ, chỉ validate sau khi user dừng 500ms
+- **Resource**: Tiết kiệm CPU và network requests
+
+---
 
 **Code minh họa - Password Validation với Entropy (`assets/js/validation.js`):**
 
@@ -218,6 +548,393 @@ class FormValidator {
 ### 2.8. Giao diện và Trải nghiệm Người dùng
 
 Giao diện người dùng được thiết kế theo triết lý responsive design, đảm bảo tương thích hoàn hảo trên mọi thiết bị từ mobile, tablet đến desktop. Đối với thiết bị di động, ứng dụng cung cấp menu hamburger để tối ưu hóa không gian hiển thị. Thiết kế UI hiện đại lấy cảm hứng từ Material Design mang lại trải nghiệm thẩm mỹ cao. Các trạng thái loading với spinner và feedback giúp người dùng biết được hệ thống đang xử lý. Toast Messages hiển thị thông báo thành công hoặc lỗi một cách rõ ràng và thân thiện. Form Validation thực hiện xác thực trực tiếp khi người dùng đang nhập liệu, giúp phát hiện lỗi sớm. Tính năng Password Visibility cho phép toggle (chuyển đổi) giữa hiển thị và ẩn mật khẩu. Hệ thống còn hỗ trợ accessibility với keyboard navigation và screen reader cho người dùng khuyết tật.
+
+#### 2.8.1. Hướng dẫn Test Giao diện và UX
+
+**A. Test Responsive Design**
+
+**Cách 1: Sử dụng Browser DevTools (Chrome/Firefox)**
+```
+1. Mở trang web cần test (ví dụ: http://localhost:8000/pages/login.html)
+2. Nhấn F12 hoặc Ctrl+Shift+I (Windows) / Cmd+Option+I (Mac)
+3. Click vào icon "Toggle device toolbar" (Ctrl+Shift+M)
+4. Chọn thiết bị để test:
+   - Mobile: iPhone SE (375px), iPhone 12 Pro (390px), Samsung Galaxy S20 (360px)
+   - Tablet: iPad (768px), iPad Pro (1024px)
+   - Desktop: 1366px, 1920px
+5. Test cả chế độ Portrait (dọc) và Landscape (ngang)
+```
+
+**Cách 2: Test thủ công với Resize Browser**
+```
+1. Mở browser ở chế độ windowed (không full screen)
+2. Kéo góc browser để thay đổi kích thước
+3. Kiểm tra breakpoints:
+   - < 480px: Mobile small (menu hamburger phải hiện)
+   - 481-768px: Mobile/Tablet (2-column grid)
+   - 769-1024px: Tablet (3-column grid)
+   - > 1024px: Desktop (full features)
+4. Verify:
+   ✓ Không có horizontal scroll bar
+   ✓ Text readable (không quá nhỏ hoặc quá lớn)
+   ✓ Buttons đủ lớn để tap (min 44x44px trên mobile)
+   ✓ Images scale properly
+```
+
+**Cách 3: Test trên thiết bị thật**
+```
+1. Lấy IP máy đang chạy server:
+   - Windows: ipconfig | Tìm IPv4 Address
+   - Mac/Linux: ifconfig | Tìm inet
+2. Trên mobile/tablet, truy cập: http://[YOUR_IP]:8000
+   Ví dụ: http://192.168.1.100:8000
+3. Test toàn bộ features trên thiết bị thật
+```
+
+---
+
+**B. Test Menu Hamburger (Mobile)**
+
+```
+Test Steps:
+1. Resize browser xuống < 768px (mobile view)
+2. Verify:
+   ✓ Menu hamburger icon (☰) hiện thị ở góc trên
+   ✓ Desktop navigation menu bị ẩn
+   
+3. Click vào hamburger icon
+4. Verify:
+   ✓ Menu slide out/dropdown xuất hiện
+   ✓ Tất cả navigation links hiển thị đầy đủ
+   ✓ Menu có overlay/backdrop (làm tối background)
+   
+5. Click vào một menu item
+6. Verify:
+   ✓ Navigate đến trang đúng
+   ✓ Menu tự động đóng sau khi chọn
+   
+7. Click outside menu (vào overlay)
+8. Verify:
+   ✓ Menu đóng lại
+```
+
+---
+
+**C. Test Loading States & Spinner**
+
+```javascript
+// Test trong Browser Console
+// 1. Test loading state manually
+const showLoadingTest = () => {
+  const btn = document.querySelector('button[type="submit"]');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Loading...';
+  
+  setTimeout(() => {
+    btn.disabled = false;
+    btn.innerHTML = 'Submit';
+  }, 3000);
+};
+
+showLoadingTest();  // Run test
+```
+
+**Checklist khi test Login/Signup:**
+```
+1. Click nút "Login" hoặc "Sign Up"
+2. Verify trong khi đang gửi request:
+   ✓ Button disabled (không click được nhiều lần)
+   ✓ Spinner icon xuất hiện
+   ✓ Text thay đổi thành "Loading..." hoặc "Processing..."
+   ✓ User không thể submit form lần 2
+   
+3. Sau khi request hoàn tất:
+   ✓ Button enabled trở lại
+   ✓ Spinner biến mất
+   ✓ Text trở về "Login"/"Sign Up"
+```
+
+---
+
+**D. Test Toast Messages**
+
+```javascript
+// Test Toast trong Browser Console
+// 1. Success Toast
+if (typeof showToast === 'function') {
+  showToast('Login successful!', 'success');
+}
+
+// 2. Error Toast
+if (typeof showToast === 'function') {
+  showToast('Invalid credentials', 'error');
+}
+
+// 3. Warning Toast
+if (typeof showToast === 'function') {
+  showToast('Session will expire soon', 'warning');
+}
+
+// 4. Info Toast
+if (typeof showToast === 'function') {
+  showToast('Profile updated', 'info');
+}
+```
+
+**Manual Test Checklist:**
+```
+1. Trigger action gây ra toast (login, signup, update profile)
+2. Verify toast hiển thị:
+   ✓ Position: Top-right hoặc top-center
+   ✓ Color: Success (green), Error (red), Warning (yellow), Info (blue)
+   ✓ Icon: ✓ (success), ✗ (error), ⚠ (warning), ℹ (info)
+   ✓ Message rõ ràng, dễ hiểu
+   ✓ Auto-dismiss sau 3-5 giây
+   
+3. Test multiple toasts:
+   ✓ Stack properly (không overlap)
+   ✓ Dismiss theo thứ tự FIFO (First In First Out)
+   
+4. Test manual close:
+   ✓ Click vào nút X để đóng
+   ✓ Toast biến mất với animation smooth
+```
+
+---
+
+**E. Test Form Validation (Real-time)**
+
+**Test Password Field:**
+```
+1. Mở trang signup.html
+2. Click vào password field
+3. Bắt đầu gõ từng ký tự: "Pass"
+4. Verify:
+   ✓ Không có error message ngay lập tức (debounced 500ms)
+   
+5. Dừng gõ 500ms
+6. Verify:
+   ✓ Error hiển thị: "Password must be at least 12 characters"
+   ✓ Field border chuyển màu đỏ (invalid state)
+   
+7. Tiếp tục gõ thành: "Password123!"
+8. Verify:
+   ✓ Password strength meter cập nhật real-time
+   ✓ Entropy bits hiển thị (ví dụ: "72.5 bits")
+   ✓ Crack time estimate hiển thị
+   ✓ Strength bar thay đổi màu: red → yellow → green
+   ✓ Strength label: "Weak" → "Medium" → "Strong"
+   
+9. Blur (click ra ngoài field)
+10. Verify:
+    ✓ Validation chạy ngay lập tức (immediate)
+    ✓ Error/success message rõ ràng
+```
+
+**Test Email Field:**
+```
+1. Gõ email không hợp lệ: "test@"
+2. Wait 500ms (debounce)
+3. Verify:
+   ✓ Error: "Please enter a valid email address"
+   ✓ Border đỏ
+   
+4. Gõ email hợp lệ: "test@example.com"
+5. Verify:
+   ✓ Error biến mất
+   ✓ Border xanh (valid state)
+   ✓ Checkmark icon xuất hiện (optional)
+```
+
+---
+
+**F. Test Password Visibility Toggle**
+
+```
+Test Steps:
+1. Tìm password input field (login hoặc signup page)
+2. Verify initial state:
+   ✓ Input type="password" (text bị ẩn: ●●●●●●)
+   ✓ Icon "eye" hoặc "eye-slash" hiển thị
+   
+3. Gõ password: "MySecretPass123!"
+4. Verify:
+   ✓ Hiển thị dưới dạng dots: ●●●●●●●●●●●●●●●●
+   
+5. Click vào icon "eye"
+6. Verify:
+   ✓ Input type chuyển thành "text"
+   ✓ Password hiển thị rõ: "MySecretPass123!"
+   ✓ Icon thay đổi thành "eye-slash"
+   
+7. Click lại icon "eye-slash"
+8. Verify:
+   ✓ Input type trở về "password"
+   ✓ Text lại bị ẩn: ●●●●●●●●●●●●●●●●
+   ✓ Icon thay đổi về "eye"
+```
+
+---
+
+**G. Test Accessibility (A11y)**
+
+**Test 1: Keyboard Navigation**
+```
+1. Mở trang login.html
+2. Chỉ dùng keyboard (KHÔNG dùng chuột):
+   
+   - Tab: Di chuyển focus đến field tiếp theo
+   - Shift+Tab: Di chuyển focus về field trước
+   - Enter: Submit form hoặc click button đang focus
+   - Space: Toggle checkbox/radio button
+   - Esc: Đóng modal/dropdown
+   
+3. Verify:
+   ✓ Focus outline rõ ràng (border xanh hoặc glow effect)
+   ✓ Thứ tự focus logic (username → password → submit button)
+   ✓ Không có "keyboard trap" (focus bị kẹt)
+   ✓ Modal có thể đóng bằng Esc
+   ✓ Dropdown navigate bằng Arrow keys
+```
+
+**Test 2: Screen Reader Support**
+```
+Sử dụng screen reader để test:
+- Windows: NVDA (free) hoặc JAWS
+- Mac: VoiceOver (built-in, Cmd+F5)
+- Chrome Extension: ChromeVox
+
+Test checklist:
+1. Bật screen reader
+2. Navigate qua form
+3. Verify screen reader đọc:
+   ✓ Label của từng input field
+   ✓ Placeholder text
+   ✓ Error messages
+   ✓ Button text
+   ✓ Link text (descriptive, không phải "click here")
+   
+4. Check ARIA attributes:
+   ✓ aria-label cho icons
+   ✓ aria-describedby cho error messages
+   ✓ aria-live cho dynamic content (toast)
+   ✓ role="alert" cho error messages
+```
+
+**Test 3: Color Contrast**
+```
+Sử dụng tools:
+- Chrome DevTools: Lighthouse → Accessibility audit
+- Browser Extension: "WAVE Evaluation Tool"
+- Online: WebAIM Contrast Checker
+
+Verify:
+✓ Text contrast ratio ≥ 4.5:1 (normal text)
+✓ Large text (18pt+) contrast ratio ≥ 3:1
+✓ Link color khác với text thường
+✓ Error messages color + icon (không chỉ dựa vào màu)
+```
+
+**Test 4: Focus Management**
+```
+1. Open modal/dialog
+2. Verify:
+   ✓ Focus tự động vào modal
+   ✓ Tab chỉ di chuyển trong modal (focus trap)
+   ✓ Background không interact được
+   
+3. Close modal
+4. Verify:
+   ✓ Focus quay về element đã trigger modal
+```
+
+---
+
+**H. Test Material Design Elements**
+
+```
+Visual Checklist:
+1. Cards:
+   ✓ Shadow elevation (box-shadow)
+   ✓ Rounded corners (border-radius)
+   ✓ Hover effect (shadow tăng)
+   
+2. Buttons:
+   ✓ Ripple effect khi click
+   ✓ Hover state (background darker)
+   ✓ Disabled state (opacity 0.5, not clickable)
+   
+3. Inputs:
+   ✓ Floating labels (label di chuyển lên khi focus)
+   ✓ Underline animation
+   ✓ Error state (red underline + shake animation)
+   
+4. Transitions:
+   ✓ Smooth (duration 200-300ms)
+   ✓ Easing function (ease-in-out)
+   ✓ No janky animations
+```
+
+---
+
+**I. Performance Testing**
+
+```javascript
+// Test trong Browser Console
+// 1. Measure page load time
+console.time('Page Load');
+window.addEventListener('load', () => {
+  console.timeEnd('Page Load');
+  // Target: < 3 seconds
+});
+
+// 2. Test debounce effectiveness
+let validationCount = 0;
+const originalValidate = validator.validatePassword;
+validator.validatePassword = function(...args) {
+  validationCount++;
+  console.log('Validation called:', validationCount, 'times');
+  return originalValidate.apply(this, args);
+};
+
+// Gõ nhanh vào password field → validation count phải thấp (< 5 lần)
+```
+
+**Browser DevTools Performance:**
+```
+1. Mở DevTools → Performance tab
+2. Click Record
+3. Interact với trang (type, click, scroll)
+4. Stop recording
+5. Analyze:
+   ✓ FPS ≥ 60 (smooth animations)
+   ✓ No long tasks (> 50ms)
+   ✓ No layout thrashing
+```
+
+---
+
+**J. Cross-Browser Testing**
+
+```
+Test trên các browsers:
+1. Chrome (latest)
+2. Firefox (latest)
+3. Safari (latest) - Mac/iOS
+4. Edge (latest)
+5. Mobile browsers:
+   - Safari iOS
+   - Chrome Android
+   - Samsung Internet
+
+Checklist cho mỗi browser:
+✓ Layout hiển thị đúng
+✓ CSS animations hoạt động
+✓ Form validation hoạt động
+✓ JavaScript không có errors (check Console)
+✓ API calls thành công
+✓ Local/Session storage hoạt động
+```
 
 ### 2.9. Các Tính năng Nâng cao
 
