@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Admin Login - WebSec</title>
+    <link rel="stylesheet" href="../assets/css/styles.css" />
+  </head>
+  <body>
+    <div class="auth-container">
+      <div class="auth-card">
+        <div class="auth-header">
+          <h1>Admin Portal</h1>
+          <p>Administrator login</p>
+        </div>
+
+        <div id="messageContainer"></div>
+
+        <form id="adminLoginForm" class="auth-form">
+          <div class="form-group">
+            <label for="username">Admin Username</label>
+            <input
+              type="text"
+              id="username"
+              name="username"
+              required
+              placeholder="Enter admin username"
+            />
+          </div>
+
+          <div class="form-group">
+            <label for="password">Password</label>
+            <input
+              type="password"
+              id="password"
+              name="password"
+              required
+              placeholder="Enter admin password"
+            />
+          </div>
+
+          <button type="submit" class="btn btn-primary btn-block">
+            Login as Admin
+          </button>
+        </form>
+
+        <div class="auth-footer">
+          <p><a href="login.html">User Login</a></p>
+          <p><a href="../index.html">Back to Home</a></p>
+        </div>
+      </div>
+    </div>
+
+    <div id="loadingSpinner" class="loading-spinner" style="display: none">
+      <div class="spinner"></div>
+    </div>
+
+    <script src="../assets/js/config.js"></script>
+    <script src="../assets/js/api.js"></script>
+    <script src="../assets/js/auth.js"></script>
+    <script src="../assets/js/main.js"></script>
+    <script>
+      // Redirect if already authenticated as admin
+      if (Auth.isAuthenticated() && Auth.hasRole('ADMIN')) {
+        window.location.href = 'admin-dashboard.html';
+      }
+
+      // Handle admin login form submission
+      document
+        .getElementById('adminLoginForm')
+        .addEventListener('submit', async (e) => {
+          e.preventDefault();
+
+          const username = document.getElementById('username').value;
+          const password = document.getElementById('password').value;
+
+          try {
+            showLoading();
+            const response = await api.adminLogin(username, password);
+            console.log(response);
+
+            // Save authentication data
+            const roles = response.body?.roles || ['ADMIN'];
+            Auth.saveAuth(response.accessToken, response.body, roles);
+
+            showSuccess('Admin login successful! Redirecting...');
+
+            setTimeout(() => {
+              // Redirect based on roles
+              if (roles.includes('STAFF')) {
+                window.location.href = 'business.html';
+              } else if (roles.includes('MANAGER')) {
+                window.location.href = 'manager.html';
+              } else {
+                window.location.href = 'admin-dashboard.html';
+              }
+            }, 1000);
+          } catch (error) {
+            hideLoading();
+            showError(
+              error.message ||
+                'Admin login failed. Please check your credentials.'
+            );
+          }
+        });
+    </script>
+  </body>
+</html>

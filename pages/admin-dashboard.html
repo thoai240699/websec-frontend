@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Admin Dashboard - WebSec</title>
+    <link rel="stylesheet" href="../assets/css/styles.css" />
+  </head>
+  <body>
+    <nav class="navbar navbar-admin">
+      <div class="container">
+        <div class="nav-brand">
+          <h1>WebSec Admin</h1>
+        </div>
+        <ul class="nav-menu" id="navMenu">
+          <li><a href="admin-dashboard.html" class="active">Dashboard</a></li>
+          <li><a href="#" onclick="Auth.logout()">Logout</a></li>
+        </ul>
+        <div id="userDisplay"></div>
+      </div>
+    </nav>
+
+    <main class="main-content admin-content">
+      <div class="container">
+        <div class="dashboard-header">
+          <h2>Admin Dashboard</h2>
+          <p>System overview and management</p>
+        </div>
+
+        <div id="messageContainer"></div>
+
+        <div class="admin-stats">
+          <div class="stat-card stat-primary">
+            <div class="stat-icon">👥</div>
+            <div class="stat-details">
+              <div class="stat-value" id="totalUsers">0</div>
+              <div class="stat-label">Total Users</div>
+            </div>
+          </div>
+
+          <div class="stat-card stat-success">
+            <div class="stat-icon">💼</div>
+            <div class="stat-details">
+              <div class="stat-value" id="totalBusinesses">0</div>
+              <div class="stat-label">Total Businesses</div>
+            </div>
+          </div>
+
+          <div class="stat-card stat-warning">
+            <div class="stat-icon">⏳</div>
+            <div class="stat-details">
+              <div class="stat-value" id="pendingItems">0</div>
+              <div class="stat-label">Pending Items</div>
+            </div>
+          </div>
+
+          <div class="stat-card stat-info">
+            <div class="stat-icon">✅</div>
+            <div class="stat-details">
+              <div class="stat-value" id="completedItems">0</div>
+              <div class="stat-label">Completed</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="admin-sections">
+          <!-- Business Management Section -->
+          <div class="admin-card">
+            <div class="card-header">
+              <h3>Business Management</h3>
+              <button
+                class="btn btn-primary btn-sm"
+                onclick="showBusinessForm()"
+              >
+                + New Business
+              </button>
+            </div>
+
+            <!-- Create Business Form -->
+            <form
+              id="adminBusinessForm"
+              class="admin-form"
+              style="display: none"
+            >
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="adminBusinessName">Business Name</label>
+                  <input type="text" id="adminBusinessName" required />
+                </div>
+                <div class="form-group">
+                  <label for="adminBusinessType">Type</label>
+                  <select id="adminBusinessType" required>
+                    <option value="">Select type</option>
+                    <option value="transaction">Transaction</option>
+                    <option value="service">Service</option>
+                    <option value="product">Product</option>
+                    <option value="consultation">Consultation</option>
+                  </select>
+                </div>
+              </div>
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="adminAmount">Amount</label>
+                  <input type="number" id="adminAmount" min="0" step="0.01" />
+                </div>
+                <div class="form-group">
+                  <label for="adminStatus">Status</label>
+                  <select id="adminStatus" required>
+                    <option value="pending">Pending</option>
+                    <option value="approved">Approved</option>
+                    <option value="completed">Completed</option>
+                    <option value="rejected">Rejected</option>
+                  </select>
+                </div>
+              </div>
+              <div class="form-group">
+                <label for="adminDescription">Description</label>
+                <textarea id="adminDescription" rows="3"></textarea>
+              </div>
+              <div class="form-actions">
+                <button type="submit" class="btn btn-primary">Create</button>
+                <button
+                  type="button"
+                  class="btn btn-secondary"
+                  onclick="hideBusinessForm()"
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+
+            <div class="business-actions">
+              <button
+                class="btn btn-secondary btn-sm"
+                onclick="loadAdminBusinessData()"
+              >
+                Refresh
+              </button>
+            </div>
+
+            <div id="adminBusinessList" class="data-list">
+              <p class="text-muted">Loading...</p>
+            </div>
+          </div>
+
+          <!-- System Logs Section -->
+          <div class="admin-card">
+            <div class="card-header">
+              <h3>System Activity</h3>
+              <a href="activity.html" class="btn btn-secondary btn-sm"
+                >View All</a
+              >
+            </div>
+            <div id="systemLogs" class="logs-container">
+              <p class="text-muted">Loading activity...</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <div id="loadingSpinner" class="loading-spinner" style="display: none">
+      <div class="spinner"></div>
+    </div>
+
+    <script src="../assets/js/config.js"></script>
+    <script src="../assets/js/api.js"></script>
+    <script src="../assets/js/auth.js"></script>
+    <script src="../assets/js/main.js"></script>
+    <script>
+      // Require admin authentication
+      if (!Auth.requireAdmin()) {
+        // Redirect handled by requireAdmin
+      } else {
+        // Check if admin has STAFF role, redirect to business page
+        const userRoles = Auth.getUserRoles();
+        if (userRoles.includes('STAFF')) {
+          window.location.href = 'business.html';
+        } else {
+          loadAdminDashboard();
+        }
+      }
+
+      // Load admin dashboard data
+      async function loadAdminDashboard() {
+        await loadAdminBusinessData();
+        await loadSystemActivity();
+      }
+
+      // Show business form
+      function showBusinessForm() {
+        document.getElementById('adminBusinessForm').style.display = 'block';
+      }
+
+      // Hide business form
+      function hideBusinessForm() {
+        document.getElementById('adminBusinessForm').style.display = 'none';
+        document.getElementById('adminBusinessForm').reset();
+      }
+
+      // Load admin business data
+      async function loadAdminBusinessData() {
+        try {
+          showLoading();
+          const response = await api.getAdminBusiness();
+
+          displayAdminBusinessList(response.body || []);
+          updateStats(response.body || []);
+          hideLoading();
+        } catch (error) {
+          hideLoading();
+          showError('Failed to load business data: ' + error.message);
+          document.getElementById('adminBusinessList').innerHTML =
+            '<p class="text-muted">No business data available</p>';
+        }
+      }
+
+      // Display admin business list
+      function displayAdminBusinessList(businesses) {
+        const listContainer = document.getElementById('adminBusinessList');
+
+        if (!businesses || businesses.length === 0) {
+          listContainer.innerHTML =
+            '<p class="text-muted">No businesses found</p>';
+          return;
+        }
+
+        let html = '<div class="table-responsive"><table class="admin-table">';
+        html +=
+          '<thead><tr><th>ID</th><th>Name</th><th>Type</th><th>Amount</th><th>Status</th><th>Date</th><th>Actions</th></tr></thead>';
+        html += '<tbody>';
+
+        businesses.forEach((business, index) => {
+          html += `
+                    <tr>
+                        <td>#${index + 1}</td>
+                        <td>${escapeHtml(business.name || 'N/A')}</td>
+                        <td><span class="badge badge-info">${escapeHtml(
+                          business.type || 'N/A'
+                        )}</span></td>
+                        <td>$${
+                          business.amount ? business.amount.toFixed(2) : '0.00'
+                        }</td>
+                        <td><span class="badge badge-${getStatusBadgeClass(
+                          business.status
+                        )}">${escapeHtml(
+            business.status || 'pending'
+          )}</span></td>
+                        <td>${
+                          business.createdAt
+                            ? formatDate(business.createdAt)
+                            : 'N/A'
+                        }</td>
+                        <td>
+                            <button class="btn btn-sm btn-secondary" onclick="viewBusiness(${index})">View</button>
+                        </td>
+                    </tr>
+                `;
+        });
+
+        html += '</tbody></table></div>';
+        listContainer.innerHTML = html;
+      }
+
+      // Get status badge class
+      function getStatusBadgeClass(status) {
+        const classes = {
+          completed: 'success',
+          approved: 'success',
+          pending: 'warning',
+          rejected: 'danger',
+        };
+        return classes[status] || 'secondary';
+      }
+
+      // Update statistics
+      function updateStats(businesses) {
+        document.getElementById('totalBusinesses').textContent =
+          businesses.length;
+
+        const pending = businesses.filter((b) => b.status === 'pending').length;
+        const completed = businesses.filter(
+          (b) => b.status === 'completed'
+        ).length;
+
+        document.getElementById('pendingItems').textContent = pending;
+        document.getElementById('completedItems').textContent = completed;
+      }
+
+      // View business details
+      function viewBusiness(index) {
+        showMessage('Business details view - Coming soon', 'info');
+      }
+
+      // Handle admin business form submission
+      document
+        .getElementById('adminBusinessForm')
+        .addEventListener('submit', async (e) => {
+          e.preventDefault();
+
+          const businessData = {
+            name: document.getElementById('adminBusinessName').value,
+            type: document.getElementById('adminBusinessType').value,
+            amount:
+              parseFloat(document.getElementById('adminAmount').value) || 0,
+            status: document.getElementById('adminStatus').value,
+            description: document.getElementById('adminDescription').value,
+          };
+
+          try {
+            showLoading();
+            await api.doAdminBusiness(businessData);
+
+            showSuccess('Business created successfully!');
+            hideBusinessForm();
+            await loadAdminBusinessData();
+            hideLoading();
+          } catch (error) {
+            hideLoading();
+            showError('Failed to create business: ' + error.message);
+          }
+        });
+
+      // Load system activity
+      async function loadSystemActivity() {
+        try {
+          const response = await api.getActivityLogs();
+          const logs = (response.body || response.data || []).slice(0, 10);
+
+          displaySystemLogs(logs);
+        } catch (error) {
+          console.error('Error loading system activity:', error);
+          document.getElementById('systemLogs').innerHTML =
+            '<p class="text-muted">Unable to load activity logs</p>';
+        }
+      }
+
+      // Display system logs
+      function displaySystemLogs(logs) {
+        const container = document.getElementById('systemLogs');
+
+        if (!logs || logs.length === 0) {
+          container.innerHTML = '<p class="text-muted">No recent activity</p>';
+          return;
+        }
+
+        let html = '';
+        logs.forEach((log) => {
+          const timeAgo = getTimeAgo(log.createdAt);
+          const actionClass = getActionClass(log.action);
+
+          html += `
+            <div class="log-entry">
+              <span class="log-time">${timeAgo}</span>
+              <span class="badge badge-${actionClass}" style="margin: 0 0.5rem;">${
+            log.action
+          }</span>
+              <span class="log-message">${escapeHtml(
+                log.content || log.entity
+              )}</span>
+            </div>
+          `;
+        });
+
+        container.innerHTML = html;
+      }
+
+      // Helper functions
+      function getTimeAgo(dateString) {
+        const date = new Date(dateString);
+        const now = new Date();
+        const seconds = Math.floor((now - date) / 1000);
+
+        if (seconds < 60) return 'Just now';
+        if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
+        if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
+        return `${Math.floor(seconds / 86400)}d ago`;
+      }
+
+      function getActionClass(action) {
+        const classes = {
+          CREATE: 'success',
+          READ: 'info',
+          UPDATE: 'warning',
+          DELETE: 'danger',
+          LOGIN: 'primary',
+          LOGOUT: 'secondary',
+        };
+        return classes[action] || 'secondary';
+      }
+    </script>
+  </body>
+</html>

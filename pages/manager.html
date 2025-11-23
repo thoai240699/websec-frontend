@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Manager Dashboard - WebSec</title>
+    <link rel="stylesheet" href="../assets/css/styles.css" />
+  </head>
+  <body>
+    <nav class="navbar navbar-admin">
+      <div class="container">
+        <div class="nav-brand">
+          <h1>WebSec Manager</h1>
+        </div>
+        <ul class="nav-menu" id="navMenu">
+          <li><a href="dashboard.html">Dashboard</a></li>
+          <li><a href="profile.html">Profile</a></li>
+          <li><a href="manager.html" class="active">Manager</a></li>
+          <li><a href="activity.html">Activity</a></li>
+          <li><a href="#" onclick="Auth.logout()">Logout</a></li>
+        </ul>
+        <div id="userDisplay"></div>
+      </div>
+    </nav>
+
+    <main class="main-content admin-content">
+      <div class="container">
+        <div class="dashboard-header">
+          <h2>Staff Management</h2>
+          <p>Register new staff and manage staff permissions</p>
+        </div>
+
+        <div id="messageContainer"></div>
+
+        <div class="admin-sections">
+          <!-- Register New Staff -->
+          <div class="admin-card">
+            <div class="card-header">
+              <h3>Register New Staff</h3>
+            </div>
+            <form id="registerStaffForm" class="admin-form">
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="staffUsername">Username</label>
+                  <input
+                    type="text"
+                    id="staffUsername"
+                    name="staffUsername"
+                    required
+                    placeholder="Enter username"
+                  />
+                </div>
+
+                <div class="form-group">
+                  <label for="staffPassword">Password</label>
+                  <input
+                    type="password"
+                    id="staffPassword"
+                    name="staffPassword"
+                    required
+                    placeholder="Enter password"
+                  />
+                </div>
+              </div>
+
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="staffFullname">Full Name</label>
+                  <input
+                    type="text"
+                    id="staffFullname"
+                    name="staffFullname"
+                    placeholder="Enter full name (optional)"
+                  />
+                </div>
+
+                <div class="form-group">
+                  <label for="staffEmail">Email</label>
+                  <input
+                    type="email"
+                    id="staffEmail"
+                    name="staffEmail"
+                    placeholder="Enter email (optional)"
+                  />
+                </div>
+              </div>
+
+              <button type="submit" class="btn btn-primary">
+                Register Staff
+              </button>
+            </form>
+          </div>
+
+          <!-- Staff List -->
+          <div class="admin-card">
+            <div class="card-header">
+              <h3>Staff List</h3>
+              <button
+                class="btn btn-secondary btn-sm"
+                onclick="loadStaffList()"
+              >
+                Refresh
+              </button>
+            </div>
+
+            <div id="staffListContainer" class="table-responsive">
+              <p class="text-muted">Loading staff list...</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <div id="loadingSpinner" class="loading-spinner" style="display: none">
+      <div class="spinner"></div>
+    </div>
+
+    <!-- Role Management Modal -->
+    <div id="roleModal" class="modal" style="display: none">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3>Manage Staff Role</h3>
+          <span class="modal-close" onclick="closeRoleModal()">&times;</span>
+        </div>
+        <div class="modal-body">
+          <p id="roleModalMessage"></p>
+          <div class="modal-actions">
+            <button class="btn btn-secondary" onclick="closeRoleModal()">
+              Cancel
+            </button>
+            <button
+              id="roleActionButton"
+              class="btn btn-primary"
+              onclick="confirmRoleAction()"
+            >
+              Confirm
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script src="../assets/js/config.js"></script>
+    <script src="../assets/js/api.js"></script>
+    <script src="../assets/js/auth.js"></script>
+    <script src="../assets/js/main.js"></script>
+    <script>
+      // Require manager authentication
+      if (!Auth.requireAuth()) {
+        // Redirect handled by requireAuth
+      } else {
+        // Check if user has MANAGER role
+        const userRoles = Auth.getUserRoles();
+        if (!userRoles.includes('MANAGER')) {
+          showError('Access denied. Manager role required.');
+          setTimeout(() => {
+            window.location.href = '/pages/dashboard.html';
+          }, 2000);
+        } else {
+          loadStaffList();
+        }
+      }
+
+      // Load staff list
+      async function loadStaffList() {
+        try {
+          showLoading();
+          const response = await api.getStaffList();
+
+          displayStaffList(response.body || response.data || []);
+          hideLoading();
+        } catch (error) {
+          hideLoading();
+          showError('Failed to load staff list: ' + error.message);
+          document.getElementById('staffListContainer').innerHTML =
+            '<p class="text-muted">Failed to load staff list</p>';
+        }
+      }
+
+      // Display staff list
+      function displayStaffList(staffList) {
+        const container = document.getElementById('staffListContainer');
+
+        if (!staffList || staffList.length === 0) {
+          container.innerHTML =
+            '<p class="text-muted">No staff members found</p>';
+          return;
+        }
+
+        let html = '<table class="admin-table">';
+        html += `
+          <thead>
+            <tr>
+              <th>Username</th>
+              <th>Full Name</th>
+              <th>Email</th>
+              <th>Roles</th>
+              <th>Status</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+        `;
+
+        staffList.forEach((staff) => {
+          const roles = staff.roles || [];
+          const hasAdminRole = roles.includes('ADMIN');
+          const isActive =
+            staff.active !== undefined
+              ? staff.active
+              : staff.isActive !== undefined
+              ? staff.isActive
+              : true;
+
+          // Get the correct ID - MongoDB returns _id
+          const staffId = staff._id || staff.id;
+
+          html += `
+            <tr>
+              <td><strong>${escapeHtml(staff.username || 'N/A')}</strong></td>
+              <td>${escapeHtml(staff.fullname || staff.fullName || 'N/A')}</td>
+              <td>${escapeHtml(staff.email || 'N/A')}</td>
+              <td>
+                ${roles
+                  .map(
+                    (role) =>
+                      `<span class="badge badge-${
+                        role === 'ADMIN' ? 'danger' : 'primary'
+                      }">${role}</span>`
+                  )
+                  .join(' ')}
+              </td>
+              <td>
+                <span class="badge badge-${isActive ? 'success' : 'secondary'}">
+                  ${isActive ? 'Active' : 'Inactive'}
+                </span>
+              </td>
+              <td>
+                ${
+                  hasAdminRole
+                    ? `<button class="btn btn-sm btn-secondary" onclick="revokeAdminRole('${staffId}', '${escapeHtml(
+                        staff.username
+                      )}')">
+                       Revoke Admin
+                     </button>`
+                    : `<button class="btn btn-sm btn-primary" onclick="grantAdminRole('${staffId}', '${escapeHtml(
+                        staff.username
+                      )}')">
+                       Grant Admin
+                     </button>`
+                }
+              </td>
+            </tr>
+          `;
+        });
+
+        html += '</tbody></table>';
+        container.innerHTML = html;
+      }
+
+      // Handle staff registration form
+      document
+        .getElementById('registerStaffForm')
+        .addEventListener('submit', async (e) => {
+          e.preventDefault();
+
+          const staffData = {
+            username: document.getElementById('staffUsername').value,
+            password: document.getElementById('staffPassword').value,
+            fullname:
+              document.getElementById('staffFullname').value || undefined,
+            email: document.getElementById('staffEmail').value || undefined,
+          };
+
+          try {
+            showLoading();
+            await api.registerStaff(staffData);
+
+            showSuccess('Staff registered successfully!');
+
+            // Reset form
+            e.target.reset();
+
+            // Reload staff list
+            await loadStaffList();
+            hideLoading();
+          } catch (error) {
+            hideLoading();
+            showError('Failed to register staff: ' + error.message);
+          }
+        });
+
+      // Role management modal variables
+      let currentStaffId = null;
+      let currentAction = null;
+
+      // Grant Admin role
+      function grantAdminRole(staffId, username) {
+        currentStaffId = staffId;
+        currentAction = 'grant';
+
+        document.getElementById(
+          'roleModalMessage'
+        ).textContent = `Are you sure you want to grant ADMIN role to ${username}?`;
+        document.getElementById('roleActionButton').textContent = 'Grant Admin';
+        document.getElementById('roleActionButton').className =
+          'btn btn-primary';
+        document.getElementById('roleModal').style.display = 'flex';
+      }
+
+      // Revoke Admin role
+      function revokeAdminRole(staffId, username) {
+        currentStaffId = staffId;
+        currentAction = 'revoke';
+
+        document.getElementById(
+          'roleModalMessage'
+        ).textContent = `Are you sure you want to revoke ADMIN role from ${username}?`;
+        document.getElementById('roleActionButton').textContent =
+          'Revoke Admin';
+        document.getElementById('roleActionButton').className =
+          'btn btn-secondary';
+        document.getElementById('roleModal').style.display = 'flex';
+      }
+
+      // Close modal
+      function closeRoleModal() {
+        document.getElementById('roleModal').style.display = 'none';
+        currentStaffId = null;
+        currentAction = null;
+      }
+
+      // Confirm role action
+      async function confirmRoleAction() {
+        if (!currentStaffId || !currentAction) {
+          closeRoleModal();
+          return;
+        }
+
+        // Store values before closing modal (which resets them)
+        const staffId = currentStaffId;
+        const action = currentAction;
+
+        try {
+          showLoading();
+          closeRoleModal();
+
+          if (action === 'grant') {
+            await api.grantAdminRole(staffId);
+            showSuccess('Admin role granted successfully!');
+          } else if (action === 'revoke') {
+            await api.revokeAdminRole(staffId);
+            showSuccess('Admin role revoked successfully!');
+          }
+
+          // Reload staff list
+          await loadStaffList();
+          hideLoading();
+        } catch (error) {
+          console.error('Role action error:', error);
+          hideLoading();
+          showError(`Failed to ${action} admin role: ${error.message}`);
+        }
+      }
+
+      // Close modal when clicking outside
+      window.onclick = function (event) {
+        const modal = document.getElementById('roleModal');
+        if (event.target === modal) {
+          closeRoleModal();
+        }
+      };
+    </script>
+  </body>
+</html>

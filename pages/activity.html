@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Activity Log - WebSec</title>
+    <link rel="stylesheet" href="../assets/css/styles.css" />
+  </head>
+  <body>
+    <nav class="navbar navbar-admin">
+      <div class="container">
+        <div class="nav-brand">
+          <h1>WebSec Manager</h1>
+        </div>
+        <ul class="nav-menu" id="navMenu">
+          <li><a href="dashboard.html">Dashboard</a></li>
+          <li><a href="profile.html">Profile</a></li>
+          <li><a href="manager.html">Manager</a></li>
+          <li><a href="activity.html" class="active">Activity</a></li>
+          <li><a href="#" onclick="Auth.logout()">Logout</a></li>
+        </ul>
+        <div id="userDisplay"></div>
+      </div>
+    </nav>
+
+    <main class="main-content admin-content">
+      <div class="container">
+        <div class="dashboard-header">
+          <h2>System Activity Log</h2>
+          <p>Monitor all system activities and user actions</p>
+        </div>
+
+        <div id="messageContainer"></div>
+
+        <div class="admin-card">
+          <div class="card-header">
+            <h3>Activity Logs</h3>
+            <div class="activity-controls">
+              <select
+                id="filterAction"
+                class="filter-select"
+                onchange="filterLogs()"
+              >
+                <option value="">All Actions</option>
+                <option value="CREATE">Create</option>
+                <option value="READ">Read</option>
+                <option value="UPDATE">Update</option>
+                <option value="DELETE">Delete</option>
+                <option value="LOGIN">Login</option>
+                <option value="LOGOUT">Logout</option>
+              </select>
+              <select
+                id="filterEntity"
+                class="filter-select"
+                onchange="filterLogs()"
+              >
+                <option value="">All Entities</option>
+                <option value="Admin">Admin</option>
+                <option value="User">User</option>
+                <option value="Business">Business</option>
+              </select>
+              <button
+                class="btn btn-secondary btn-sm"
+                onclick="loadActivityLogs()"
+              >
+                🔄 Refresh
+              </button>
+            </div>
+          </div>
+
+          <div class="activity-stats">
+            <div class="stat-mini">
+              <span class="stat-label">Total Activities</span>
+              <span class="stat-value" id="totalActivities">0</span>
+            </div>
+            <div class="stat-mini">
+              <span class="stat-label">Today</span>
+              <span class="stat-value" id="todayActivities">0</span>
+            </div>
+            <div class="stat-mini">
+              <span class="stat-label">This Hour</span>
+              <span class="stat-value" id="hourActivities">0</span>
+            </div>
+          </div>
+
+          <div id="activityListContainer" class="activity-list">
+            <p class="text-muted">Loading activity logs...</p>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <div id="loadingSpinner" class="loading-spinner" style="display: none">
+      <div class="spinner"></div>
+    </div>
+
+    <!-- Activity Detail Modal -->
+    <div id="activityModal" class="modal" style="display: none">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3>Activity Details</h3>
+          <span class="modal-close" onclick="closeActivityModal()"
+            >&times;</span
+          >
+        </div>
+        <div class="modal-body">
+          <div id="activityDetails"></div>
+        </div>
+      </div>
+    </div>
+
+    <script src="../assets/js/config.js"></script>
+    <script src="../assets/js/api.js"></script>
+    <script src="../assets/js/auth.js"></script>
+    <script src="../assets/js/main.js"></script>
+    <script>
+      let allLogs = [];
+      let filteredLogs = [];
+
+      // Require manager authentication
+      if (!Auth.requireAuth()) {
+        // Redirect handled by requireAuth
+      } else {
+        const userRoles = Auth.getUserRoles();
+        if (!userRoles.includes('MANAGER') && !userRoles.includes('ADMIN')) {
+          showError('Access denied. Manager or Admin role required.');
+          setTimeout(() => {
+            window.location.href = '/pages/dashboard.html';
+          }, 2000);
+        } else {
+          loadActivityLogs();
+        }
+      }
+
+      // Load activity logs
+      async function loadActivityLogs() {
+        try {
+          showLoading();
+          const response = await api.getActivityLogs();
+
+          allLogs = response.body || response.data || [];
+          filteredLogs = [...allLogs];
+
+          displayActivityLogs(filteredLogs);
+          updateActivityStats(allLogs);
+          hideLoading();
+        } catch (error) {
+          hideLoading();
+          showError('Failed to load activity logs: ' + error.message);
+          document.getElementById('activityListContainer').innerHTML =
+            '<p class="text-muted">Failed to load activity logs</p>';
+        }
+      }
+
+      // Display activity logs
+      function displayActivityLogs(logs) {
+        const container = document.getElementById('activityListContainer');
+
+        if (!logs || logs.length === 0) {
+          container.innerHTML =
+            '<p class="text-muted">No activity logs found</p>';
+          return;
+        }
+
+        let html = '<div class="timeline">';
+
+        logs.forEach((log, index) => {
+          const actionClass = getActionClass(log.action);
+          const actionIcon = getActionIcon(log.action);
+          const timeAgo = getTimeAgo(log.createdAt);
+
+          html += `
+            <div class="timeline-item" onclick="showActivityDetails(${index})">
+              <div class="timeline-marker ${actionClass}">
+                ${actionIcon}
+              </div>
+              <div class="timeline-content">
+                <div class="timeline-header">
+                  <span class="timeline-action">
+                    <span class="badge badge-${actionClass}">${
+            log.action
+          }</span>
+                    <span class="timeline-entity">${escapeHtml(
+                      log.entity
+                    )}</span>
+                  </span>
+                  <span class="timeline-time">${timeAgo}</span>
+                </div>
+                <div class="timeline-description">
+                  ${escapeHtml(log.content || 'No description')}
+                </div>
+                <div class="timeline-meta">
+                  <span class="timeline-user">User ID: ${escapeHtml(
+                    log.userId
+                  )}</span>
+                  ${
+                    log.before || log.after
+                      ? '<span class="timeline-badge">Has Details</span>'
+                      : ''
+                  }
+                </div>
+              </div>
+            </div>
+          `;
+        });
+
+        html += '</div>';
+        container.innerHTML = html;
+      }
+
+      // Filter logs
+      function filterLogs() {
+        const actionFilter = document.getElementById('filterAction').value;
+        const entityFilter = document.getElementById('filterEntity').value;
+
+        filteredLogs = allLogs.filter((log) => {
+          const matchAction = !actionFilter || log.action === actionFilter;
+          const matchEntity = !entityFilter || log.entity === entityFilter;
+          return matchAction && matchEntity;
+        });
+
+        displayActivityLogs(filteredLogs);
+        updateActivityStats(filteredLogs);
+      }
+
+      // Update activity statistics
+      function updateActivityStats(logs) {
+        const now = new Date();
+        const todayStart = new Date(
+          now.getFullYear(),
+          now.getMonth(),
+          now.getDate()
+        );
+        const hourStart = new Date(now.getTime() - 60 * 60 * 1000);
+
+        const todayCount = logs.filter(
+          (log) => new Date(log.createdAt) >= todayStart
+        ).length;
+        const hourCount = logs.filter(
+          (log) => new Date(log.createdAt) >= hourStart
+        ).length;
+
+        document.getElementById('totalActivities').textContent = logs.length;
+        document.getElementById('todayActivities').textContent = todayCount;
+        document.getElementById('hourActivities').textContent = hourCount;
+      }
+
+      // Show activity details in modal
+      function showActivityDetails(index) {
+        const log = filteredLogs[index];
+        if (!log) return;
+
+        let html = `
+          <div class="detail-section">
+            <h4>Basic Information</h4>
+            <div class="detail-row">
+              <span class="detail-label">Action:</span>
+              <span class="badge badge-${getActionClass(log.action)}">${
+          log.action
+        }</span>
+            </div>
+            <div class="detail-row">
+              <span class="detail-label">Entity:</span>
+              <span>${escapeHtml(log.entity)}</span>
+            </div>
+            <div class="detail-row">
+              <span class="detail-label">User ID:</span>
+              <span>${escapeHtml(log.userId)}</span>
+            </div>
+            <div class="detail-row">
+              <span class="detail-label">Time:</span>
+              <span>${formatDateTime(log.createdAt)}</span>
+            </div>
+            <div class="detail-row">
+              <span class="detail-label">Description:</span>
+              <span>${escapeHtml(log.content || 'N/A')}</span>
+            </div>
+          </div>
+        `;
+
+        if (log.before) {
+          html += `
+            <div class="detail-section">
+              <h4>Before Changes</h4>
+              <pre class="code-block">${JSON.stringify(
+                log.before,
+                null,
+                2
+              )}</pre>
+            </div>
+          `;
+        }
+
+        if (log.after) {
+          html += `
+            <div class="detail-section">
+              <h4>After Changes</h4>
+              <pre class="code-block">${JSON.stringify(
+                log.after,
+                null,
+                2
+              )}</pre>
+            </div>
+          `;
+        }
+
+        document.getElementById('activityDetails').innerHTML = html;
+        document.getElementById('activityModal').style.display = 'flex';
+      }
+
+      // Close activity modal
+      function closeActivityModal() {
+        document.getElementById('activityModal').style.display = 'none';
+      }
+
+      // Get action class for styling
+      function getActionClass(action) {
+        const classes = {
+          CREATE: 'success',
+          READ: 'info',
+          UPDATE: 'warning',
+          DELETE: 'danger',
+          LOGIN: 'primary',
+          LOGOUT: 'secondary',
+        };
+        return classes[action] || 'secondary';
+      }
+
+      // Get action icon
+      function getActionIcon(action) {
+        const icons = {
+          CREATE: '➕',
+          READ: '👁️',
+          UPDATE: '✏️',
+          DELETE: '🗑️',
+          LOGIN: '🔓',
+          LOGOUT: '🔒',
+        };
+        return icons[action] || '📝';
+      }
+
+      // Get time ago string
+      function getTimeAgo(dateString) {
+        const date = new Date(dateString);
+        const now = new Date();
+        const seconds = Math.floor((now - date) / 1000);
+
+        if (seconds < 60) return 'Just now';
+        if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
+        if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
+        if (seconds < 2592000) return `${Math.floor(seconds / 86400)}d ago`;
+        return formatDate(dateString);
+      }
+
+      // Format date time
+      function formatDateTime(dateString) {
+        if (!dateString) return 'N/A';
+        const date = new Date(dateString);
+        return date.toLocaleString('en-US', {
+          year: 'numeric',
+          month: 'short',
+          day: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit',
+        });
+      }
+
+      // Close modal when clicking outside
+      window.onclick = function (event) {
+        const modal = document.getElementById('activityModal');
+        if (event.target === modal) {
+          closeActivityModal();
+        }
+      };
+    </script>
+  </body>
+</html>

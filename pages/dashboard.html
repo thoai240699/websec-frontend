@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Dashboard - WebSec</title>
+    <link rel="stylesheet" href="../assets/css/styles.css" />
+  </head>
+  <body>
+    <nav class="navbar">
+      <div class="container">
+        <div class="nav-brand">
+          <h1>WebSec</h1>
+        </div>
+        <ul class="nav-menu" id="navMenu">
+          <li><a href="dashboard.html" class="active">Dashboard</a></li>
+          <li><a href="profile.html">Profile</a></li>
+          <li><a href="business.html">Business</a></li>
+          <li><a href="#" onclick="Auth.logout()">Logout</a></li>
+        </ul>
+        <div id="userDisplay"></div>
+      </div>
+    </nav>
+
+    <main class="main-content">
+      <div class="container">
+        <div class="dashboard-header">
+          <h2>Dashboard</h2>
+          <p>Welcome back, <span id="userName"></span></p>
+        </div>
+
+        <div id="messageContainer"></div>
+
+        <div class="dashboard-grid">
+          <div class="dashboard-card">
+            <div class="card-icon">👤</div>
+            <h3>Profile</h3>
+            <p>Manage your account information</p>
+            <a href="profile.html" class="btn btn-secondary">View Profile</a>
+          </div>
+
+          <div class="dashboard-card" id="businessCard">
+            <div class="card-icon">💼</div>
+            <h3>Business</h3>
+            <p>Access business operations</p>
+            <a href="business.html" class="btn btn-secondary">Go to Business</a>
+          </div>
+
+          <div class="dashboard-card">
+            <div class="card-icon">📊</div>
+            <h3>Activity</h3>
+            <p>View your recent activity</p>
+            <a
+              href="activity.html"
+              class="btn btn-secondary"
+              id="activityBtn"
+              style="display: none"
+              >View Activity</a
+            >
+            <button class="btn btn-secondary" id="activityDisabled" disabled>
+              Coming Soon
+            </button>
+          </div>
+
+          <div class="dashboard-card">
+            <div class="card-icon">⚙️</div>
+            <h3>Settings</h3>
+            <p>Configure your preferences</p>
+            <button class="btn btn-secondary" disabled>Coming Soon</button>
+          </div>
+        </div>
+
+        <div class="stats-section">
+          <h3>Quick Stats</h3>
+          <div class="stats-grid">
+            <div class="stat-card">
+              <div class="stat-value" id="totalTransactions">0</div>
+              <div class="stat-label">Total Transactions</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-value" id="pendingTasks">0</div>
+              <div class="stat-label">Pending Tasks</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-value" id="completedTasks">0</div>
+              <div class="stat-label">Completed Tasks</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Recent Activity Section (for Managers/Admins) -->
+        <div
+          class="stats-section"
+          id="recentActivitySection"
+          style="display: none"
+        >
+          <div
+            style="
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+              margin-bottom: 1rem;
+            "
+          >
+            <h3>Recent Activity</h3>
+            <a href="activity.html" class="btn btn-secondary btn-sm"
+              >View All</a
+            >
+          </div>
+          <div id="recentActivityList" class="activity-list-compact">
+            <p class="text-muted">Loading...</p>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <div id="loadingSpinner" class="loading-spinner" style="display: none">
+      <div class="spinner"></div>
+    </div>
+
+    <script src="../assets/js/config.js"></script>
+    <script src="../assets/js/api.js"></script>
+    <script src="../assets/js/auth.js"></script>
+    <script src="../assets/js/main.js"></script>
+    <script>
+      // Require authentication
+      if (!Auth.requireAuth()) {
+        // Redirect handled by requireAuth
+      } else {
+        // Load dashboard data
+        document.addEventListener('DOMContentLoaded', async () => {
+          const userData = Auth.getUserData();
+          const userRoles = Auth.getUserRoles();
+
+          if (userData) {
+            document.getElementById('userName').textContent =
+              userData.name || userData.email || userData.username;
+          }
+
+          // Show activity button for managers and admins
+          if (userRoles.includes('MANAGER') || userRoles.includes('ADMIN')) {
+            document.getElementById('activityBtn').style.display =
+              'inline-block';
+            document.getElementById('activityDisabled').style.display = 'none';
+            document.getElementById('recentActivitySection').style.display =
+              'block';
+            loadRecentActivity();
+          }
+
+          // Hide Business card for manager-only users
+          const isManager = userRoles.includes('MANAGER');
+          const isAdmin = userRoles.includes('ADMIN');
+          const isCustomer = userRoles.includes('CUSTOMER');
+          const showBusiness = !isManager || isAdmin || isCustomer;
+
+          if (!showBusiness) {
+            const businessCard = document.getElementById('businessCard');
+            if (businessCard) {
+              businessCard.style.display = 'none';
+            }
+          }
+
+          // Load user stats or business data if needed
+          try {
+            // Example: load business data
+            // const businessData = await api.getBusiness();
+            // Update stats accordingly
+          } catch (error) {
+            console.error('Error loading dashboard data:', error);
+          }
+        });
+      }
+
+      // Load recent activity for managers/admins
+      async function loadRecentActivity() {
+        try {
+          const response = await api.getActivityLogs(10);
+          const logs = response.body || response.data || [];
+
+          displayRecentActivity(logs.slice(0, 5));
+        } catch (error) {
+          console.error('Error loading recent activity:', error);
+          document.getElementById('recentActivityList').innerHTML =
+            '<p class="text-muted">Unable to load recent activity</p>';
+        }
+      }
+
+      // Display recent activity
+      function displayRecentActivity(logs) {
+        const container = document.getElementById('recentActivityList');
+
+        if (!logs || logs.length === 0) {
+          container.innerHTML = '<p class="text-muted">No recent activity</p>';
+          return;
+        }
+
+        let html = '<div class="compact-timeline">';
+        logs.forEach((log) => {
+          const timeAgo = getTimeAgo(log.createdAt);
+          const actionClass = getActionClass(log.action);
+
+          html += `
+            <div class="compact-activity-item">
+              <span class="badge badge-${actionClass}">${log.action}</span>
+              <span class="activity-content">${escapeHtml(
+                log.content || log.entity
+              )}</span>
+              <span class="activity-time">${timeAgo}</span>
+            </div>
+          `;
+        });
+        html += '</div>';
+
+        container.innerHTML = html;
+      }
+
+      // Helper functions
+      function getTimeAgo(dateString) {
+        const date = new Date(dateString);
+        const now = new Date();
+        const seconds = Math.floor((now - date) / 1000);
+
+        if (seconds < 60) return 'Just now';
+        if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
+        if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
+        return `${Math.floor(seconds / 86400)}d ago`;
+      }
+
+      function getActionClass(action) {
+        const classes = {
+          CREATE: 'success',
+          READ: 'info',
+          UPDATE: 'warning',
+          DELETE: 'danger',
+          LOGIN: 'primary',
+          LOGOUT: 'secondary',
+        };
+        return classes[action] || 'secondary';
+      }
+    </script>
+  </body>
+</html>

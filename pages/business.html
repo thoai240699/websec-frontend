@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Business - WebSec</title>
+    <link rel="stylesheet" href="../assets/css/styles.css" />
+  </head>
+  <body>
+    <nav class="navbar">
+      <div class="container">
+        <div class="nav-brand">
+          <h1>WebSec</h1>
+        </div>
+        <ul class="nav-menu" id="navMenu">
+          <li><a href="dashboard.html">Dashboard</a></li>
+          <li><a href="profile.html">Profile</a></li>
+          <li><a href="business.html" class="active">Business</a></li>
+          <li><a href="#" onclick="Auth.logout()">Logout</a></li>
+        </ul>
+        <div id="userDisplay"></div>
+      </div>
+    </nav>
+
+    <main class="main-content">
+      <div class="container">
+        <div class="page-header">
+          <h2>Business Operations</h2>
+          <p>Manage your business activities</p>
+        </div>
+
+        <div id="messageContainer"></div>
+
+        <!-- Business Navigation Tabs -->
+        <div class="business-tabs">
+          <button class="tab-button active" data-tab="product">Product</button>
+          <button class="tab-button" data-tab="order">Order</button>
+          <button
+            class="tab-button"
+            data-tab="basement"
+            id="basementTabButton"
+            style="display: none"
+          >
+            Basement
+          </button>
+        </div>
+
+        <!-- Tab Content -->
+        <div class="tab-content">
+          <!-- Product Tab -->
+          <div id="productTab" class="tab-pane active">
+            <div class="business-card">
+              <h3>Product Section</h3>
+              <div id="productAccess" class="access-status">
+                <p class="text-muted">Checking access...</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Order Tab -->
+          <div id="orderTab" class="tab-pane">
+            <div class="business-card">
+              <h3>Order Section</h3>
+              <div id="orderAccess" class="access-status">
+                <p class="text-muted">Checking access...</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Basement Tab (STAFF and ADMIN only) -->
+          <div id="basementTabContent" class="tab-pane">
+            <div class="business-card">
+              <h3>Basement Section</h3>
+              <div id="basementAccess" class="access-status">
+                <p class="text-muted">Checking access...</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <div id="loadingSpinner" class="loading-spinner" style="display: none">
+      <div class="spinner"></div>
+    </div>
+
+    <script src="../assets/js/config.js"></script>
+    <script src="../assets/js/api.js"></script>
+    <script src="../assets/js/auth.js"></script>
+    <script src="../assets/js/main.js"></script>
+    <script>
+      // Require authentication
+      if (!Auth.requireAuth()) {
+        // Redirect handled by requireAuth
+      } else {
+        initBusinessPage();
+      }
+
+      // Initialize business page
+      function initBusinessPage() {
+        // Check user roles and show/hide Basement tab
+        const userRoles = Auth.getUserRoles();
+        console.log(userRoles);
+        const hasStaffOrAdminRole =
+          userRoles.includes('STAFF') || userRoles.includes('ADMIN');
+
+        if (hasStaffOrAdminRole) {
+          document.getElementById('basementTabButton').style.display =
+            'inline-block';
+        }
+
+        // Setup tab navigation
+        setupTabNavigation();
+
+        // Check access for all sections
+        checkProductAccess();
+        checkOrderAccess();
+        if (hasStaffOrAdminRole) {
+          checkBasementAccess();
+        }
+      }
+
+      // Setup tab navigation
+      function setupTabNavigation() {
+        const tabButtons = document.querySelectorAll('.tab-button');
+
+        tabButtons.forEach((button) => {
+          button.addEventListener('click', () => {
+            const tabName = button.getAttribute('data-tab');
+            switchTab(tabName);
+          });
+        });
+      }
+
+      // Switch between tabs
+      function switchTab(tabName) {
+        // Remove active class from all buttons and panes
+        document
+          .querySelectorAll('.tab-button')
+          .forEach((btn) => btn.classList.remove('active'));
+        document
+          .querySelectorAll('.tab-pane')
+          .forEach((pane) => pane.classList.remove('active'));
+
+        // Add active class to selected button and pane
+        const button = document.querySelector(`[data-tab="${tabName}"]`);
+        if (button) button.classList.add('active');
+
+        const paneId =
+          tabName === 'basement' ? 'basementTabContent' : `${tabName}Tab`;
+        const pane = document.getElementById(paneId);
+        if (pane) pane.classList.add('active');
+      }
+
+      // Check Product access
+      async function checkProductAccess() {
+        try {
+          console.log('Checking Product access...');
+          console.log('Auth token:', Auth.getToken());
+          const response = await api.request('/api/business/product', {
+            method: 'GET',
+            auth: true,
+          });
+          console.log('Product access response:', response);
+
+          displayAccessGranted('productAccess', 'Product', () =>
+            interactWithProduct()
+          );
+        } catch (error) {
+          console.error('Product access error:', error);
+          displayAccessDenied('productAccess', 'Product', error.message);
+        }
+      }
+
+      // Check Order access
+      async function checkOrderAccess() {
+        try {
+          console.log('Checking Order access...');
+          const response = await api.request('/api/business/order', {
+            method: 'GET',
+            auth: true,
+          });
+          console.log('Order access response:', response);
+
+          displayAccessGranted('orderAccess', 'Order', () =>
+            interactWithOrder()
+          );
+        } catch (error) {
+          console.error('Order access error:', error);
+          displayAccessDenied('orderAccess', 'Order', error.message);
+        }
+      }
+
+      // Check Basement access
+      async function checkBasementAccess() {
+        try {
+          console.log('Checking Basement access...');
+          const response = await api.request('/api/business/basement', {
+            method: 'GET',
+            auth: true,
+          });
+          console.log('Basement access response:', response);
+
+          displayAccessGranted('basementAccess', 'Basement', () =>
+            interactWithBasement()
+          );
+        } catch (error) {
+          console.error('Basement access error:', error);
+          displayAccessDenied('basementAccess', 'Basement', error.message);
+        }
+      }
+
+      // Display access granted
+      function displayAccessGranted(
+        containerId,
+        sectionName,
+        interactCallback
+      ) {
+        const container = document.getElementById(containerId);
+        container.innerHTML = `
+          <div class="access-granted">
+            <div class="access-icon success">✓</div>
+            <h4>Access Granted</h4>
+            <p>You have permission to access the ${sectionName} section.</p>
+            <button class="btn btn-primary" onclick="(${interactCallback})()">Interact</button>
+          </div>
+        `;
+      }
+
+      // Display access denied
+      function displayAccessDenied(containerId, sectionName, errorMessage) {
+        const container = document.getElementById(containerId);
+        container.innerHTML = `
+          <div class="access-denied">
+            <div class="access-icon error">✗</div>
+            <h4>Access Denied</h4>
+            <p>You do not have permission to access the ${sectionName} section.</p>
+            <p class="error-message">${escapeHtml(errorMessage)}</p>
+          </div>
+        `;
+      }
+
+      // Interact with Product
+      async function interactWithProduct() {
+        try {
+          showLoading();
+          const response = await api.request('/api/business/product', {
+            method: 'POST',
+            auth: true,
+          });
+          hideLoading();
+
+          if (response && response.message) {
+            showSuccess(`Product Interaction: ${response.message}`);
+          } else {
+            showSuccess('Successfully interacted with Product section!');
+          }
+          console.log('Product interaction response:', response);
+        } catch (error) {
+          hideLoading();
+          showError(`Product interaction failed: ${error.message}`);
+          console.error('Product interaction error:', error);
+        }
+      }
+
+      // Interact with Order
+      async function interactWithOrder() {
+        try {
+          showLoading();
+          const response = await api.request('/api/business/order', {
+            method: 'POST',
+            auth: true,
+          });
+          hideLoading();
+
+          if (response && response.message) {
+            showSuccess(`Order Interaction: ${response.message}`);
+          } else {
+            showSuccess('Successfully interacted with Order section!');
+          }
+          console.log('Order interaction response:', response);
+        } catch (error) {
+          hideLoading();
+          showError(`Order interaction failed: ${error.message}`);
+          console.error('Order interaction error:', error);
+        }
+      }
+
+      // Interact with Basement
+      async function interactWithBasement() {
+        try {
+          showLoading();
+          const response = await api.request('/api/business/basement', {
+            method: 'POST',
+            auth: true,
+          });
+          hideLoading();
+
+          if (response && response.message) {
+            showSuccess(`Basement Interaction: ${response.message}`);
+          } else {
+            showSuccess('Successfully interacted with Basement section!');
+          }
+          console.log('Basement interaction response:', response);
+        } catch (error) {
+          hideLoading();
+          showError(`Basement interaction failed: ${error.message}`);
+          console.error('Basement interaction error:', error);
+        }
+      }
+    </script>
+  </body>
+</html>

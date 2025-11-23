@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Profile - WebSec</title>
+    <link rel="stylesheet" href="../assets/css/styles.css" />
+  </head>
+  <body>
+    <nav class="navbar">
+      <div class="container">
+        <div class="nav-brand">
+          <h1>WebSec</h1>
+        </div>
+        <ul class="nav-menu" id="navMenu">
+          <li><a href="dashboard.html">Dashboard</a></li>
+          <li><a href="profile.html" class="active">Profile</a></li>
+          <li><a href="business.html">Business</a></li>
+          <li><a href="#" onclick="Auth.logout()">Logout</a></li>
+        </ul>
+        <div id="userDisplay"></div>
+      </div>
+    </nav>
+
+    <main class="main-content">
+      <div class="container">
+        <div class="page-header">
+          <h2>My Profile</h2>
+          <p>View and update your profile information</p>
+        </div>
+
+        <div id="messageContainer"></div>
+
+        <div class="profile-container">
+          <div class="profile-card">
+            <div class="profile-avatar">
+              <img
+                id="profileAvatar"
+                src="/assets/images/default-avatar.png"
+                alt="Profile Avatar"
+              />
+            </div>
+
+            <div class="profile-info" id="profileView">
+              <div class="info-row">
+                <label>Email:</label>
+                <span id="profileEmail">Loading...</span>
+              </div>
+              <div class="info-row">
+                <label>Full Name:</label>
+                <span id="profileFullname">Not set</span>
+              </div>
+              <div class="info-row">
+                <label>Date of Birth:</label>
+                <span id="profileDob">Not set</span>
+              </div>
+
+              <button class="btn btn-primary" onclick="showEditForm()">
+                Edit Profile
+              </button>
+            </div>
+
+            <form
+              id="profileEditForm"
+              class="profile-form"
+              style="display: none"
+            >
+              <div class="form-group">
+                <label for="email">Email</label>
+                <input type="email" id="email" name="email" readonly />
+              </div>
+
+              <div class="form-group">
+                <label for="fullname">Full Name</label>
+                <input
+                  type="text"
+                  id="fullname"
+                  name="fullname"
+                  required
+                  placeholder="Enter your full name"
+                />
+              </div>
+
+              <div class="form-group">
+                <label for="dob">Date of Birth</label>
+                <input type="date" id="dob" name="dob" required />
+              </div>
+
+              <div class="form-actions">
+                <button type="submit" class="btn btn-primary">
+                  Save Changes
+                </button>
+                <button
+                  type="button"
+                  class="btn btn-secondary"
+                  onclick="cancelEdit()"
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <div id="loadingSpinner" class="loading-spinner" style="display: none">
+      <div class="spinner"></div>
+    </div>
+
+    <script src="../assets/js/config.js"></script>
+    <script src="../assets/js/api.js"></script>
+    <script src="../assets/js/auth.js"></script>
+    <script src="../assets/js/main.js"></script>
+    <script>
+      let profileData = null;
+
+      // Require authentication
+      if (!Auth.requireAuth()) {
+        // Redirect handled by requireAuth
+      } else {
+        loadProfile();
+      }
+
+      // Load profile data
+      async function loadProfile() {
+        try {
+          showLoading();
+          const response = await api.getUserProfile();
+          profileData = response.body;
+
+          displayProfile(profileData);
+          hideLoading();
+        } catch (error) {
+          hideLoading();
+          showError('Failed to load profile: ' + error.message);
+        }
+      }
+
+      // Display profile data
+      function displayProfile(data) {
+        if (data.avatar) {
+          document.getElementById('profileAvatar').src = data.avatar;
+        }
+        document.getElementById('profileEmail').textContent =
+          data.email || 'N/A';
+        document.getElementById('profileFullname').textContent =
+          data.fullname || 'Not set';
+        document.getElementById('profileDob').textContent = data.dob
+          ? formatDate(data.dob)
+          : 'Not set';
+      }
+
+      // Show edit form
+      function showEditForm() {
+        document.getElementById('profileView').style.display = 'none';
+        document.getElementById('profileEditForm').style.display = 'block';
+
+        // Populate form
+        if (profileData) {
+          document.getElementById('email').value = profileData.email || '';
+          document.getElementById('fullname').value =
+            profileData.fullname || '';
+          document.getElementById('dob').value = profileData.dob
+            ? formatDateForInput(profileData.dob)
+            : '';
+        }
+      }
+
+      // Cancel edit
+      function cancelEdit() {
+        document.getElementById('profileView').style.display = 'block';
+        document.getElementById('profileEditForm').style.display = 'none';
+      }
+
+      // Handle form submission
+      document
+        .getElementById('profileEditForm')
+        .addEventListener('submit', async (e) => {
+          e.preventDefault();
+
+          const fullname = document.getElementById('fullname').value;
+          const dob = document.getElementById('dob').value;
+
+          try {
+            showLoading();
+            await api.updateUserProfile(fullname, dob);
+
+            showSuccess('Profile updated successfully!');
+
+            // Reload profile
+            await loadProfile();
+            cancelEdit();
+            hideLoading();
+          } catch (error) {
+            hideLoading();
+            showError('Failed to update profile: ' + error.message);
+          }
+        });
+    </script>
+  </body>
+</html>
