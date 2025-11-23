@@ -31,9 +31,10 @@ class FormValidator {
     return { valid: true };
   }
 
-  // Password validation with strength checking
+  // Password validation with entropy-based strength checking
   validatePassword(value, options = {}) {
-    const minLength = options.minLength || 8;
+    // Prioritize length over complexity!
+    const minLength = options.minLength || 12;  // Increased from 8 to 12
     const maxLength = options.maxLength || 128;
 
     if (value.length < minLength) {
@@ -88,31 +89,97 @@ class FormValidator {
     return { valid: true };
   }
 
-  // Calculate password strength
+  // Calculate password strength using Entropy
   calculatePasswordStrength(password) {
-    let strength = 0;
+    const length = password.length;
+    
+    // Determine character set size (N)
     const checks = {
-      length: password.length >= 8,
       lowercase: /[a-z]/.test(password),
       uppercase: /[A-Z]/.test(password),
       number: /\d/.test(password),
-      special: /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(password),
+      special: /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?~`]/.test(password),
+      spaces: /\s/.test(password),
     };
 
-    // Award points for each criterion met
-    if (checks.length) strength += 20;
-    if (password.length >= 12) strength += 10;
-    if (checks.lowercase) strength += 20;
-    if (checks.uppercase) strength += 20;
-    if (checks.number) strength += 15;
-    if (checks.special) strength += 15;
+    let charsetSize = 0;
+    if (checks.lowercase) charsetSize += 26;  // a-z
+    if (checks.uppercase) charsetSize += 26;  // A-Z
+    if (checks.number) charsetSize += 10;     // 0-9
+    if (checks.special) charsetSize += 32;    // Special characters
+    if (checks.spaces) charsetSize += 1;      // Space
 
-    // Determine strength level
-    let level = 'weak';
-    if (strength >= 80) level = 'strong';
-    else if (strength >= 50) level = 'medium';
+    // Minimum charset size (at least lowercase if nothing detected)
+    if (charsetSize === 0) charsetSize = 26;
 
-    return { strength, level, checks };
+    // Calculate entropy: L × log₂(N)
+    const entropy = length * Math.log2(charsetSize);
+
+    // Determine strength level based on entropy
+    // < 40 bits: Very Weak (vulnerable to brute force)
+    // 40-59 bits: Weak (can be cracked with effort)
+    // 60-79 bits: Medium (reasonable for most uses)
+    // 80-99 bits: Strong (difficult to crack)
+    // >= 100 bits: Very Strong (extremely difficult to crack)
+    let level = 'very-weak';
+    let label = 'Very Weak';
+    let percentage = Math.min(100, (entropy / 120) * 100);
+
+    if (entropy >= 100) {
+      level = 'very-strong';
+      label = 'Very Strong';
+    } else if (entropy >= 80) {
+      level = 'strong';
+      label = 'Strong';
+    } else if (entropy >= 60) {
+      level = 'medium';
+      label = 'Medium';
+    } else if (entropy >= 40) {
+      level = 'weak';
+      label = 'Weak';
+    }
+
+    // Additional checks
+    const recommendations = [];
+    if (length < 12) {
+      recommendations.push('Use at least 12 characters (length matters most!)');
+    }
+    if (length < 14 && !checks.special) {
+      recommendations.push('Add special characters or make it longer');
+    }
+    if (charsetSize < 26) {
+      recommendations.push('Use letters to increase complexity');
+    }
+
+    return {
+      entropy: Math.round(entropy * 10) / 10,  // Round to 1 decimal
+      level,
+      label,
+      percentage: Math.round(percentage),
+      charsetSize,
+      length,
+      checks,
+      recommendations,
+      // Estimate time to crack (very rough)
+      estimatedCrackTime: this.estimateCrackTime(entropy)
+    };
+  }
+
+  // Estimate time to crack based on entropy
+  estimateCrackTime(entropy) {
+    // Assume 10 billion guesses/second (modern GPU)
+    const guessesPerSecond = 10e9;
+    const possibleCombinations = Math.pow(2, entropy);
+    const secondsToCrack = possibleCombinations / (2 * guessesPerSecond); // Average case
+
+    if (secondsToCrack < 1) return 'Instant';
+    if (secondsToCrack < 60) return `${Math.round(secondsToCrack)} seconds`;
+    if (secondsToCrack < 3600) return `${Math.round(secondsToCrack / 60)} minutes`;
+    if (secondsToCrack < 86400) return `${Math.round(secondsToCrack / 3600)} hours`;
+    if (secondsToCrack < 31536000) return `${Math.round(secondsToCrack / 86400)} days`;
+    if (secondsToCrack < 31536000 * 100) return `${Math.round(secondsToCrack / 31536000)} years`;
+    
+    return 'Centuries+';
   }
 
   // Username validation
@@ -488,7 +555,7 @@ const SecurityUtils = {
     return { suspicious: false };
   },
 
-  // Secure password storage check
+  // Check for common/leaked passwords
   checkCommonPasswords(password) {
     const commonPasswords = [
       'password',
@@ -511,11 +578,69 @@ const SecurityUtils = {
       'shadow',
       '123123',
       '654321',
+      'password123',
+      'admin',
+      'welcome',
+      'password1',
+      '123456789',
+      'qwerty123',
+      'Password1',
+      'P@ssw0rd',
+      'Password123',
+      '1q2w3e4r',
     ];
 
-    return commonPasswords.some(
-      (common) => password.toLowerCase() === common.toLowerCase()
-    );
+    const lowerPassword = password.toLowerCase();
+    
+    // Direct match check
+    if (commonPasswords.some(common => lowerPassword === common.toLowerCase())) {
+      return {
+        isCommon: true,
+        message: 'This password is too common and easily guessed'
+      };
+    }
+
+    // Check for simple patterns
+    if (/^(.)\1+$/.test(password)) {  // All same character
+      return {
+        isCommon: true,
+        message: 'Password cannot be all the same character'
+      };
+    }
+
+    if (/^(012|123|234|345|456|567|678|789|890|abc|bcd|cde|def|efg|fgh|ghi|hij|ijk|jkl|klm|lmn|mno|nop|opq|pqr|qrs|rst|stu|tuv|uvw|vwx|wxy|xyz)+$/i.test(password)) {
+      return {
+        isCommon: true,
+        message: 'Password contains sequential patterns'
+      };
+    }
+
+    return { isCommon: false };
+  },
+
+  // Generate strong password suggestion
+  generateStrongPassword(length = 16) {
+    const lowercase = 'abcdefghijklmnopqrstuvwxyz';
+    const uppercase = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    const numbers = '0123456789';
+    const special = '!@#$%^&*()_+-=[]{}|;:,.<>?';
+    
+    const allChars = lowercase + uppercase + numbers + special;
+    let password = '';
+    
+    // Ensure at least one of each type
+    password += lowercase[Math.floor(Math.random() * lowercase.length)];
+    password += uppercase[Math.floor(Math.random() * uppercase.length)];
+    password += numbers[Math.floor(Math.random() * numbers.length)];
+    password += special[Math.floor(Math.random() * special.length)];
+    
+    // Fill the rest randomly
+    for (let i = password.length; i < length; i++) {
+      password += allChars[Math.floor(Math.random() * allChars.length)];
+    }
+    
+    // Shuffle the password
+    return password.split('').sort(() => Math.random() - 0.5).join('');
   },
 };
 
