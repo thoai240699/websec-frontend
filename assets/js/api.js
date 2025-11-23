@@ -64,11 +64,13 @@ class APIService {
       if (!response.ok) {
         // Handle specific error codes
         if (response.status === 401) {
-          // Unauthorized - clear auth and redirect
-          if (typeof Auth !== 'undefined') {
+          // Unauthorized - only logout if user was authenticated
+          if (typeof Auth !== 'undefined' && Auth.isAuthenticated()) {
             Auth.logout();
+            throw new Error('Session expired. Please login again.');
           }
-          throw new Error('Session expired. Please login again.');
+          // For login failures, just throw error without logout
+          throw new Error(data.message || data.error || 'Authentication failed');
         } else if (response.status === 403) {
           throw new Error('Access denied. Insufficient permissions.');
         } else if (response.status === 429) {

@@ -3,6 +3,10 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' http://localhost:3052"
+    />
     <title>Admin Login - WebSec</title>
     <link rel="stylesheet" href="../assets/css/styles.css" />
   </head>
@@ -16,27 +20,45 @@
 
         <div id="messageContainer"></div>
 
-        <form id="adminLoginForm" class="auth-form">
+        <form id="adminLoginForm" class="auth-form" novalidate>
           <div class="form-group">
-            <label for="username">Admin Username</label>
+            <label for="username">
+              Admin Username <span class="required">*</span>
+            </label>
             <input
               type="text"
               id="username"
               name="username"
               required
               placeholder="Enter admin username"
+              autocomplete="username"
+              maxlength="100"
             />
           </div>
 
           <div class="form-group">
-            <label for="password">Password</label>
-            <input
-              type="password"
-              id="password"
-              name="password"
-              required
-              placeholder="Enter admin password"
-            />
+            <label for="password">
+              Password <span class="required">*</span>
+            </label>
+            <div class="input-wrapper">
+              <input
+                type="password"
+                id="password"
+                name="password"
+                required
+                placeholder="Enter admin password"
+                autocomplete="current-password"
+                maxlength="128"
+              />
+              <button
+                type="button"
+                class="toggle-password"
+                aria-label="Toggle password visibility"
+                onclick="togglePasswordVisibility('password')"
+              >
+                👁️
+              </button>
+            </div>
           </div>
 
           <button type="submit" class="btn btn-primary btn-block">
@@ -56,6 +78,7 @@
     </div>
 
     <script src="../assets/js/config.js"></script>
+    <script src="../assets/js/validation.js"></script>
     <script src="../assets/js/api.js"></script>
     <script src="../assets/js/auth.js"></script>
     <script src="../assets/js/main.js"></script>
@@ -65,19 +88,74 @@
         window.location.href = 'admin-dashboard.html';
       }
 
+      // Initialize CSRF token
+      SecurityUtils.storeCSRFToken();
+
+      // Toggle password visibility
+      function togglePasswordVisibility(fieldId) {
+        const field = document.getElementById(fieldId);
+        const button = field.nextElementSibling;
+        if (field.type === 'password') {
+          field.type = 'text';
+          button.textContent = '🙈';
+        } else {
+          field.type = 'password';
+          button.textContent = '👁️';
+        }
+      }
+
+      // Add live validation
+      const usernameField = document.getElementById('username');
+      const passwordField = document.getElementById('password');
+
+      validator.addLiveValidation(usernameField, [
+        { type: 'required' },
+        { type: 'minLength', length: 3 },
+      ]);
+
+      validator.addLiveValidation(passwordField, [
+        { type: 'required' },
+        { type: 'minLength', length: 6 },
+      ]);
+
       // Handle admin login form submission
       document
         .getElementById('adminLoginForm')
         .addEventListener('submit', async (e) => {
           e.preventDefault();
 
-          const username = document.getElementById('username').value;
+          const username = document.getElementById('username').value.trim();
           const password = document.getElementById('password').value;
+
+          // Client-side validation
+          if (!username || !password) {
+            showError('Please fill in all fields');
+            return;
+          }
+
+          if (username.length < 3) {
+            showError('Username must be at least 3 characters');
+            return;
+          }
+
+          if (password.length < 6) {
+            showError('Password must be at least 6 characters');
+            return;
+          }
+
+          // Check for suspicious input
+          const suspiciousCheck = SecurityUtils.detectSuspiciousInput(username);
+          if (suspiciousCheck.suspicious) {
+            showError('Invalid input detected');
+            return;
+          }
+
+          // Sanitize input
+          const sanitizedUsername = validator.sanitizeInput(username);
 
           try {
             showLoading();
-            const response = await api.adminLogin(username, password);
-            console.log(response);
+            const response = await api.adminLogin(sanitizedUsername, password);
 
             // Save authentication data
             const roles = response.body?.roles || ['ADMIN'];
@@ -103,6 +181,19 @@
             );
           }
         });
+
+      // Prevent multiple form submissions
+      let isSubmitting = false;
+      document.getElementById('adminLoginForm').addEventListener('submit', (e) => {
+        if (isSubmitting) {
+          e.preventDefault();
+          return;
+        }
+        isSubmitting = true;
+        setTimeout(() => {
+          isSubmitting = false;
+        }, 3000);
+      });
     </script>
   </body>
 </html>

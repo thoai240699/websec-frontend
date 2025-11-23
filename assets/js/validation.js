@@ -308,8 +308,12 @@ class FormValidator {
 
   // Add real-time validation to a field
   addLiveValidation(fieldElement, validationRules) {
-    const feedbackElement = this.createFeedbackElement();
-    fieldElement.parentElement.appendChild(feedbackElement);
+    // Check if feedback element already exists
+    let feedbackElement = fieldElement.parentElement.querySelector('.form-feedback');
+    if (!feedbackElement) {
+      feedbackElement = this.createFeedbackElement();
+      fieldElement.parentElement.appendChild(feedbackElement);
+    }
 
     const validateField = () => {
       const value = fieldElement.value;

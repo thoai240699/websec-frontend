@@ -371,7 +371,7 @@ img {
 
 /* Form Styles */
 .form-group {
-  margin-bottom: 1.5rem;
+  margin-bottom: 1rem;
   position: relative;
 }
 
@@ -436,27 +436,51 @@ img {
   pointer-events: none;
 }
 
+.form-group .input-wrapper {
+  position: relative;
+}
+
 .form-group .toggle-password {
   position: absolute;
-  right: 1rem;
-  top: 2.5rem;
+  right: 0.5rem;
+  top: 35%;
+  transform: translateY(-50%);
   background: none;
   border: none;
   cursor: pointer;
   color: var(--text-muted);
-  padding: 0.25rem;
-  font-size: 1.2rem;
-  pointer-events: all;
+  padding: 0.25rem 0.5rem;
+  font-size: 1.1rem;
+  line-height: 1;
+  z-index: 10;
+  transition: var(--transition);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 2rem;
 }
 
 .form-group .toggle-password:hover {
   color: var(--primary-color);
 }
 
+.form-group .input-wrapper input {
+  padding-right: 2.75rem;
+  width: 100%;
+}
+
+.form-group .input-wrapper input:focus {
+  outline: none;
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+}
+
 .form-feedback {
-  margin-top: 0.5rem;
+  margin-top: 0.25rem;
   font-size: 0.875rem;
   display: block;
+  min-height: 1.25rem;
+  line-height: 1.25rem;
 }
 
 .form-feedback.error {
@@ -953,6 +977,18 @@ img {
   right: 20px;
   z-index: 9999;
   max-width: 400px;
+  pointer-events: none;
+}
+
+#messageContainer .message {
+  pointer-events: all;
+}
+
+/* Message container for auth pages - prevent layout shift */
+.auth-card #messageContainer {
+  position: static;
+  max-width: 100%;
+  margin-bottom: 1rem;
 }
 
 .message {
