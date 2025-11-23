@@ -3,17 +3,32 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>WebSec - Home</title>
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' http://localhost:3052"
+    />
+    <meta name="description" content="WebSec - Secure business management platform with role-based access control" />
+    <meta name="theme-color" content="#2563eb" />
+    <title>WebSec - Secure Business Management Platform</title>
     <link rel="stylesheet" href="assets/css/styles.css" />
   </head>
   <body>
     <nav class="navbar">
       <div class="container">
         <div class="nav-brand">
-          <h1>WebSec</h1>
+          <h1 onclick="window.location.href='index.html'">WebSec</h1>
         </div>
+        <button
+          class="mobile-menu-toggle"
+          id="mobileMenuToggle"
+          aria-label="Toggle mobile menu"
+        >
+          <span></span>
+          <span></span>
+          <span></span>
+        </button>
         <ul class="nav-menu" id="navMenu">
-          <li><a href="index.html">Home</a></li>
+          <li><a href="index.html" class="active">Home</a></li>
           <li><a href="pages/login.html">Login</a></li>
           <li><a href="pages/signup.html">Sign Up</a></li>
           <li><a href="pages/admin-login.html">Admin</a></li>
@@ -26,7 +41,8 @@
         <div class="hero-content">
           <h2>Welcome to WebSec</h2>
           <p>
-            Secure business management platform with role-based access control
+            Secure business management platform with role-based access control,
+            comprehensive authentication, and advanced security features
           </p>
           <div class="hero-buttons">
             <a href="pages/login.html" class="btn btn-primary">Get Started</a>
@@ -42,19 +58,27 @@
         <div class="feature-grid">
           <div class="feature-card">
             <h3>🔒 Secure Authentication</h3>
-            <p>JWT-based authentication with secure password hashing</p>
+            <p>JWT-based authentication with bcrypt password hashing and secure session management</p>
           </div>
           <div class="feature-card">
             <h3>👥 Role-Based Access</h3>
-            <p>Manage users with different permission levels</p>
+            <p>Granular permission controls with admin, manager, and customer roles</p>
           </div>
           <div class="feature-card">
             <h3>💼 Business Management</h3>
-            <p>Track and manage business operations efficiently</p>
+            <p>Track and manage business operations efficiently with real-time updates</p>
           </div>
           <div class="feature-card">
             <h3>📊 Admin Dashboard</h3>
-            <p>Comprehensive admin panel for system oversight</p>
+            <p>Comprehensive admin panel for system oversight and user management</p>
+          </div>
+          <div class="feature-card">
+            <h3>🛡️ Security First</h3>
+            <p>Input validation, XSS protection, CSRF tokens, and rate limiting</p>
+          </div>
+          <div class="feature-card">
+            <h3>📱 Responsive Design</h3>
+            <p>Works seamlessly across all devices - desktop, tablet, and mobile</p>
           </div>
         </div>
       </div>
@@ -62,8 +86,52 @@
 
     <footer class="footer">
       <div class="container">
-        <p>&copy; 2025 WebSec. All rights reserved.</p>
+        <p>&copy; 2025 WebSec. All rights reserved. Built with security in mind.</p>
       </div>
     </footer>
+
+    <script src="assets/js/config.js"></script>
+    <script src="assets/js/validation.js"></script>
+    <script src="assets/js/api.js"></script>
+    <script src="assets/js/auth.js"></script>
+    <script src="assets/js/main.js"></script>
+    <script>
+      // Mobile menu toggle
+      document.addEventListener('DOMContentLoaded', () => {
+        const mobileMenuToggle = document.getElementById('mobileMenuToggle');
+        const navMenu = document.getElementById('navMenu');
+
+        if (mobileMenuToggle) {
+          mobileMenuToggle.addEventListener('click', () => {
+            mobileMenuToggle.classList.toggle('active');
+            navMenu.classList.toggle('active');
+          });
+
+          // Close menu when clicking outside
+          document.addEventListener('click', (e) => {
+            if (
+              !mobileMenuToggle.contains(e.target) &&
+              !navMenu.contains(e.target)
+            ) {
+              mobileMenuToggle.classList.remove('active');
+              navMenu.classList.remove('active');
+            }
+          });
+
+          // Close menu when clicking on a link
+          navMenu.querySelectorAll('a').forEach((link) => {
+            link.addEventListener('click', () => {
+              mobileMenuToggle.classList.remove('active');
+              navMenu.classList.remove('active');
+            });
+          });
+        }
+
+        // Initialize CSRF token
+        if (typeof SecurityUtils !== 'undefined') {
+          SecurityUtils.storeCSRFToken();
+        }
+      });
+    </script>
   </body>
 </html>

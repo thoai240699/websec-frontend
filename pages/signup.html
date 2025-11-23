@@ -3,6 +3,10 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' http://localhost:3052"
+    />
     <title>Sign Up - WebSec</title>
     <link rel="stylesheet" href="../assets/css/styles.css" />
   </head>
@@ -16,41 +20,84 @@
 
         <div id="messageContainer"></div>
 
-        <form id="signupForm" class="auth-form">
+        <form id="signupForm" class="auth-form" novalidate>
           <div class="form-group">
-            <label for="username">Username</label>
+            <label for="username">
+              Username <span class="required">*</span>
+            </label>
             <input
               type="text"
               id="username"
               name="username"
               required
               placeholder="Choose a username"
+              autocomplete="username"
               minlength="3"
+              maxlength="30"
             />
           </div>
 
           <div class="form-group">
-            <label for="password">Password</label>
-            <input
-              type="password"
-              id="password"
-              name="password"
-              required
-              placeholder="Create a password"
-              minlength="8"
-            />
+            <label for="password">
+              Password <span class="required">*</span>
+            </label>
+            <div style="position: relative">
+              <input
+                type="password"
+                id="password"
+                name="password"
+                required
+                placeholder="Create a strong password"
+                autocomplete="new-password"
+                minlength="8"
+                maxlength="128"
+              />
+              <button
+                type="button"
+                class="toggle-password"
+                aria-label="Toggle password visibility"
+                onclick="togglePasswordVisibility('password')"
+              >
+                👁️
+              </button>
+            </div>
+            <div class="password-strength">
+              <div class="password-strength-bar">
+                <div
+                  class="password-strength-fill"
+                  id="passwordStrengthFill"
+                ></div>
+              </div>
+              <span class="password-strength-text" id="passwordStrengthText"
+                >Password strength: None</span
+              >
+            </div>
           </div>
 
           <div class="form-group">
-            <label for="confirmPassword">Confirm Password</label>
-            <input
-              type="password"
-              id="confirmPassword"
-              name="confirmPassword"
-              required
-              placeholder="Confirm your password"
-              minlength="8"
-            />
+            <label for="confirmPassword">
+              Confirm Password <span class="required">*</span>
+            </label>
+            <div style="position: relative">
+              <input
+                type="password"
+                id="confirmPassword"
+                name="confirmPassword"
+                required
+                placeholder="Confirm your password"
+                autocomplete="new-password"
+                minlength="8"
+                maxlength="128"
+              />
+              <button
+                type="button"
+                class="toggle-password"
+                aria-label="Toggle password visibility"
+                onclick="togglePasswordVisibility('confirmPassword')"
+              >
+                👁️
+              </button>
+            </div>
           </div>
 
           <button type="submit" class="btn btn-primary btn-block">
@@ -70,6 +117,7 @@
     </div>
 
     <script src="../assets/js/config.js"></script>
+    <script src="../assets/js/validation.js"></script>
     <script src="../assets/js/api.js"></script>
     <script src="../assets/js/auth.js"></script>
     <script src="../assets/js/main.js"></script>
@@ -77,16 +125,137 @@
       // Redirect if already authenticated
       Auth.redirectIfAuthenticated();
 
+      // Initialize CSRF token
+      SecurityUtils.storeCSRFToken();
+
+      // Toggle password visibility
+      function togglePasswordVisibility(fieldId) {
+        const field = document.getElementById(fieldId);
+        const button = field.nextElementSibling;
+        if (field.type === 'password') {
+          field.type = 'text';
+          button.textContent = '🙈';
+        } else {
+          field.type = 'password';
+          button.textContent = '👁️';
+        }
+      }
+
+      // Add live validation
+      const usernameField = document.getElementById('username');
+      const passwordField = document.getElementById('password');
+      const confirmPasswordField = document.getElementById('confirmPassword');
+
+      validator.addLiveValidation(usernameField, [
+        { type: 'required' },
+        { type: 'username', minLength: 3, maxLength: 30 },
+      ]);
+
+      validator.addLiveValidation(passwordField, [
+        { type: 'required' },
+        { type: 'password', minLength: 8, maxLength: 128 },
+      ]);
+
+      // Password strength indicator
+      passwordField.addEventListener('input', () => {
+        const password = passwordField.value;
+        if (!password) {
+          document.getElementById('passwordStrengthFill').className =
+            'password-strength-fill';
+          document.getElementById('passwordStrengthText').textContent =
+            'Password strength: None';
+          return;
+        }
+
+        const strength = validator.calculatePasswordStrength(password);
+        const fillElement = document.getElementById('passwordStrengthFill');
+        fillElement.className = `password-strength-fill ${strength.level}`;
+
+        let strengthText = 'Password strength: ';
+        if (strength.level === 'weak') strengthText += 'Weak';
+        else if (strength.level === 'medium') strengthText += 'Medium';
+        else strengthText += 'Strong';
+
+        document.getElementById('passwordStrengthText').textContent =
+          strengthText;
+
+        // Add suggestions
+        const suggestions = [];
+        if (!strength.checks.uppercase)
+          suggestions.push('Add uppercase letters');
+        if (!strength.checks.number) suggestions.push('Add numbers');
+        if (!strength.checks.special) suggestions.push('Add special characters');
+        if (password.length < 12) suggestions.push('Make it longer (12+ chars)');
+
+        if (suggestions.length > 0) {
+          document.getElementById('passwordStrengthText').textContent +=
+            ' - Tip: ' + suggestions[0];
+        }
+      });
+
+      // Validate password match
+      confirmPasswordField.addEventListener('input', () => {
+        const password = passwordField.value;
+        const confirmPassword = confirmPasswordField.value;
+
+        if (confirmPassword && password !== confirmPassword) {
+          confirmPasswordField.classList.add('invalid');
+          confirmPasswordField.classList.remove('valid');
+        } else if (confirmPassword) {
+          confirmPasswordField.classList.remove('invalid');
+          confirmPasswordField.classList.add('valid');
+        } else {
+          confirmPasswordField.classList.remove('invalid', 'valid');
+        }
+      });
+
       // Handle signup form submission
       document
         .getElementById('signupForm')
         .addEventListener('submit', async (e) => {
           e.preventDefault();
 
-          const username = document.getElementById('username').value;
+          const username = document.getElementById('username').value.trim();
           const password = document.getElementById('password').value;
           const confirmPassword =
             document.getElementById('confirmPassword').value;
+
+          // Comprehensive validation
+          if (!username || !password || !confirmPassword) {
+            showError('Please fill in all fields');
+            return;
+          }
+
+          // Validate username
+          const usernameValidation = validator.validateUsername(username);
+          if (!usernameValidation.valid) {
+            showError(usernameValidation.message);
+            return;
+          }
+
+          // Check for suspicious input
+          const suspiciousCheck = SecurityUtils.detectSuspiciousInput(username);
+          if (suspiciousCheck.suspicious) {
+            showError('Invalid username format');
+            return;
+          }
+
+          // Validate password
+          const passwordValidation = validator.validatePassword(password, {
+            minLength: 8,
+          });
+          if (!passwordValidation.valid) {
+            showError(passwordValidation.message);
+            return;
+          }
+
+          // Check common passwords
+          if (SecurityUtils.checkCommonPasswords(password)) {
+            showError(
+              'This password is too common. Please choose a stronger password.'
+            );
+            return;
+          }
 
           // Validate passwords match
           if (password !== confirmPassword) {
@@ -94,16 +263,12 @@
             return;
           }
 
-          // Validate password strength
-          const passwordValidation = validatePassword(password);
-          if (!passwordValidation.valid) {
-            showError(passwordValidation.message);
-            return;
-          }
+          // Sanitize input
+          const sanitizedUsername = validator.sanitizeInput(username);
 
           try {
             showLoading();
-            const response = await api.signup(username, password);
+            const response = await api.signup(sanitizedUsername, password);
 
             hideLoading();
             showSuccess(
@@ -118,6 +283,19 @@
             showError(error.message || 'Signup failed. Please try again.');
           }
         });
+
+      // Prevent multiple form submissions
+      let isSubmitting = false;
+      document.getElementById('signupForm').addEventListener('submit', (e) => {
+        if (isSubmitting) {
+          e.preventDefault();
+          return;
+        }
+        isSubmitting = true;
+        setTimeout(() => {
+          isSubmitting = false;
+        }, 3000);
+      });
     </script>
   </body>
 </html>

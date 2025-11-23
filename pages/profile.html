@@ -7,12 +7,13 @@
     <link rel="stylesheet" href="../assets/css/styles.css" />
   </head>
   <body>
-    <nav class="navbar">
+    <nav class="navbar navbar-admin">
       <div class="container">
         <div class="nav-brand">
           <h1>WebSec</h1>
         </div>
         <ul class="nav-menu" id="navMenu">
+          <li><a href="../index.html">Home</a></li>
           <li><a href="dashboard.html">Dashboard</a></li>
           <li><a href="profile.html" class="active">Profile</a></li>
           <li><a href="business.html">Business</a></li>
@@ -53,6 +54,10 @@
               <div class="info-row">
                 <label>Date of Birth:</label>
                 <span id="profileDob">Not set</span>
+              </div>
+              <div class="info-row">
+                <label>Roles:</label>
+                <span id="profileRoles">Loading...</span>
               </div>
 
               <button class="btn btn-primary" onclick="showEditForm()">
@@ -142,17 +147,49 @@
         if (data.avatar) {
           document.getElementById('profileAvatar').src = data.avatar;
         }
-        document.getElementById('profileEmail').textContent =
-          data.email || 'N/A';
-        document.getElementById('profileFullname').textContent =
-          data.fullname || 'Not set';
-        document.getElementById('profileDob').textContent = data.dob
-          ? formatDate(data.dob)
-          : 'Not set';
+
+        // Check if Admin user (has username instead of email)
+        const isAdminUser = data.username !== undefined;
+
+        if (isAdminUser) {
+          // Admin user - show username, hide email/fullname/dob fields
+          document.getElementById('profileEmail').textContent = data.username || 'N/A';
+          document.querySelector('label[for="email"]').textContent = 'Username:';
+          document.getElementById('profileFullname').closest('.info-row').style.display = 'none';
+          document.getElementById('profileDob').closest('.info-row').style.display = 'none';
+          
+          // Hide edit form fields for admin
+          document.querySelector('.form-group:has(#fullname)').style.display = 'none';
+          document.querySelector('.form-group:has(#dob)').style.display = 'none';
+        } else {
+          // Regular user - show all fields
+          document.getElementById('profileEmail').textContent = data.email || 'N/A';
+          document.getElementById('profileFullname').textContent = data.fullname || 'Not set';
+          document.getElementById('profileDob').textContent = data.dob ? formatDate(data.dob) : 'Not set';
+        }
+        
+        // Display roles as badges
+        const roles = data.roles || ['CUSTOMER']; // Default to CUSTOMER if no roles
+        const rolesHtml = roles.map(role => {
+          let badgeClass = 'primary';
+          if (role === 'ADMIN') badgeClass = 'danger';
+          else if (role === 'MANAGER') badgeClass = 'warning';
+          else if (role === 'STAFF') badgeClass = 'info';
+          else if (role === 'CUSTOMER') badgeClass = 'success';
+          return `<span class="badge badge-${badgeClass}">${role}</span>`;
+        }).join(' ');
+        document.getElementById('profileRoles').innerHTML = rolesHtml;
       }
 
       // Show edit form
       function showEditForm() {
+        const isAdminUser = profileData.username !== undefined;
+
+        if (isAdminUser) {
+          showError('Admin profiles cannot be edited from this page');
+          return;
+        }
+
         document.getElementById('profileView').style.display = 'none';
         document.getElementById('profileEditForm').style.display = 'block';
 
